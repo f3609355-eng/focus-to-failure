@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>FTF Integration Test: Wave Cycle Position Persistence</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:20px}
+    .pass{color:green} .fail{color:red}
+    button{padding:10px 12px}
+  </style>
+</head>
+<body>
+  <h1>Integration Test: Wave cycle position persists</h1>
+  <p>Ensures cyclePos increments across planNext() calls and survives a new instance hydrate.</p>
+  <button id="run">Run</button>
+  <div id="out"></div>
+  <script type="module">
+    import { WavePlanner, Phase } from "../planner.js";
+    import { DEFAULT_CONFIG } from "../config.js";
+
+    function ok(cond, msg){
+      const el = document.createElement('div');
+      el.className = cond ? 'pass' : 'fail';
+      el.textContent = (cond ? 'PASS: ' : 'FAIL: ') + msg;
+      document.querySelector('#out').appendChild(el);
+      if (!cond) throw new Error(msg);
+    }
+
+    function fakeMetrics(){
+      return {
+        floor: 30*60, median: 35*60, ceiling: 45*60,
+        recent_n: 21, recent_iqr: 6*60, recent_crashes: 0, recent_overshoots_7: 0
+      };
+    }
+
+    document.getElementById('run').onclick = async () => {
+      document.querySelector('#out').innerHTML = '';
+      localStorage.removeItem("ftf_training_state_v2");
+
+      const p = new WavePlanner(DEFAULT_CONFIG);
+      // Force into wave mode for this test
+      p.phase = Phase.WAVE;
+      p.cycleId = 0; p.cyclePos = 0; p.cycle = [];
+      p.saveTrainingState();
+
+      // Plan next a few times; this advances cycle position internally in WAVE
+      const evalBlocks = [];
+      for (let i=0;i<3;i++){
+        p.planNext({ metrics: fakeMetrics(), evalBlocks, cfg: DEFAULT_CONFIG });
+      }
+      ok(p.cycleId >= 1, "cycle started");
+      ok(p.cyclePos >= 1, "cycle position advanced");
+      const savedPos = p.cyclePos;
+      const savedId = p.cycleId;
+
+      // new instance should hydrate same
+      const p2 = new WavePlanner(DEFAULT_CONFIG);
+      ok(p2.phase === Phase.WAVE, "phase wave hydrated");
+      ok(p2.cycleId === savedId, "cycle id persisted");
+      ok(p2.cyclePos === savedPos, "cycle pos persisted");
+    };
+  </script>
+</body>
+</html>

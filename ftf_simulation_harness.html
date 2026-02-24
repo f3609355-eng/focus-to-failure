@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FTF — Simulation Harness (Production Imports)</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding:16px; }
+    h1{ font-size:18px; margin-bottom:8px; }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    select, button, input{ padding:8px 10px; border:1px solid #ccc; border-radius:8px; background:#fff; }
+    button{ cursor:pointer; }
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px; }
+    .card{ border:1px solid #e5e5e5; border-radius:12px; padding:12px; }
+    canvas{ width:100%; height:240px; background:#fff; border:1px solid #eee; border-radius:10px; }
+    pre{ background:#0b1020; color:#e7ecff; padding:12px; border-radius:10px; overflow:auto; max-height:340px; }
+  </style>
+</head>
+<body>
+  <h1>FTF Simulation Harness</h1>
+  <div class="row">
+    <label>Profile:
+      <select id="profile"></select>
+    </label>
+    <button id="run">Run simulation</button>
+    <button id="runAll">Run all</button>
+    <a href="./tests/sim_runner.html">Open test runner</a>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <b>Summary</b>
+      <pre id="summary">Ready.</pre>
+    </div>
+    <div class="card">
+      <b>Trace (goal vs focus)</b>
+      <canvas id="chart" width="900" height="360"></canvas>
+      <small>Note: This harness imports and runs the production planner/engines. It does not re-implement the algorithm.</small>
+    </div>
+  </div>
+
+<script type="module">
+  import { PROFILES } from "./tests/simProfiles.js";
+  import { runScenario } from "./tests/simCore.js";
+  import { runAll } from "./tests/simRunner.js";
+
+  const sel = document.getElementById('profile');
+  const sumEl = document.getElementById('summary');
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+
+  for (const k of Object.keys(PROFILES)){
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = PROFILES[k].name;
+    sel.appendChild(opt);
+  }
+
+  function drawTrace(blocks){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (!blocks.length) return;
+
+    const pad = 30;
+    const w = canvas.width - 2*pad;
+    const h = canvas.height - 2*pad;
+
+    const maxY = Math.max(...blocks.map(b=>Math.max(b.goal_seconds||0,b.focus_seconds||0))) || 1;
+    const n = blocks.length;
+
+    function x(i){ return pad + (i/(n-1))*w; }
+    function y(v){ return pad + h - (v/maxY)*h; }
+
+    // axes
+    ctx.strokeStyle = "#ddd";
+    ctx.beginPath();
+    ctx.moveTo(pad, pad);
+    ctx.lineTo(pad, pad+h);
+    ctx.lineTo(pad+w, pad+h);
+    ctx.stroke();
+
+    // goal line
+    ctx.strokeStyle = "#1f77b4";
+    ctx.beginPath();
+    blocks.forEach((b,i)=>{
+      const xx=x(i), yy=y(b.goal_seconds||0);
+      if (i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+    });
+    ctx.stroke();
+
+    // focus line
+    ctx.strokeStyle = "#ff7f0e";
+    ctx.beginPath();
+    blocks.forEach((b,i)=>{
+      const xx=x(i), yy=y(b.focus_seconds||0);
+      if (i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle="#111";
+    ctx.font="12px system-ui";
+    ctx.fillText("Goal (blue) vs Focus (orange)", pad, 18);
+  }
+
+  document.getElementById('run').onclick = () => {
+    const k = sel.value;
+    const res = runScenario(PROFILES[k]);
+    sumEl.textContent = JSON.stringify({
+      profile: PROFILES[k].name,
+      blocks: res.blocks.length,
+      last: res.blocks[res.blocks.length-1],
+    }, null, 2);
+    drawTrace(res.blocks);
+  };
+
+  document.getElementById('runAll').onclick = () => {
+    const out = runAll();
+    sumEl.textContent = JSON.stringify(out, null, 2);
+    // draw one representative
+    const firstKey = Object.keys(PROFILES)[0];
+    const res = runScenario(PROFILES[firstKey]);
+    drawTrace(res.blocks);
+  };
+</script>
+</body>
+</html>

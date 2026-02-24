@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FTF — Simulation Test Runner</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding:16px; }
+    h1{ font-size:18px; margin-bottom:10px; }
+    button{ padding:8px 10px; border:1px solid #ccc; background:#fff; cursor:pointer; border-radius:8px; }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    pre{ background:#0b1020; color:#e7ecff; padding:12px; border-radius:10px; overflow:auto; }
+    .ok{ color:#0a7a0a; font-weight:700; }
+    .bad{ color:#b00020; font-weight:700; }
+  </style>
+</head>
+<body>
+  <h1>FTF Simulation Test Runner (imports production engines)</h1>
+  <div class="row">
+    <button id="run">Run all tests</button>
+    <button id="runCompare">Run + compare baseline</button>
+    <button id="downloadBaseline">Download current as baseline JSON</button>
+    <span id="status"></span>
+  </div>
+  <pre id="out">Ready.</pre>
+
+<script type="module">
+  import { runAll, compareToBaseline } from "./simRunner.js";
+
+  const outEl = document.getElementById('out');
+  const statusEl = document.getElementById('status');
+
+  async function loadBaseline(){
+    try{
+      const res = await fetch("./baseline.json", { cache:"no-store" });
+      if (!res.ok) return null;
+      return await res.json();
+    }catch(e){ return null; }
+  }
+
+  function setStatus(ok, msg){
+    statusEl.textContent = msg;
+    statusEl.className = ok ? 'ok' : 'bad';
+  }
+
+  function downloadJSON(obj, filename){
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type:"application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('run').onclick = () => {
+    try{
+      const current = runAll();
+      outEl.textContent = JSON.stringify(current, null, 2);
+      setStatus(true, "PASS (assertions)");
+      window.__ftf_current = current;
+    }catch(e){
+      outEl.textContent = String(e?.stack || e);
+      setStatus(false, "FAIL");
+    }
+  };
+
+  document.getElementById('runCompare').onclick = async () => {
+    try{
+      const baseline = await loadBaseline();
+      const current = runAll();
+      window.__ftf_current = current;
+      if (!baseline){
+        outEl.textContent = JSON.stringify({ note:"No baseline.json found. Use 'Download current as baseline JSON' then place it as tests/baseline.json", current }, null, 2);
+        setStatus(false, "No baseline");
+        return;
+      }
+      const cmp = compareToBaseline(current, baseline);
+      outEl.textContent = JSON.stringify({ cmp, current, baseline }, null, 2);
+      setStatus(cmp.ok, cmp.ok ? "PASS (within tolerances)" : "FAIL (regression)");
+    }catch(e){
+      outEl.textContent = String(e?.stack || e);
+      setStatus(false, "FAIL");
+    }
+  };
+
+  document.getElementById('downloadBaseline').onclick = () => {
+    const current = window.__ftf_current;
+    if (!current){
+      setStatus(false, "Run tests first");
+      return;
+    }
+    downloadJSON(current, "baseline.json");
+    setStatus(true, "Downloaded baseline.json");
+  };
+</script>
+</body>
+</html>

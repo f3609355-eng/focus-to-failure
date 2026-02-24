@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Focus to Failure — Adaptive focus training that grows with you." />
+  <title>Focus to Failure — Wave Trainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body class="simple stats-hidden">
+  <div class="app" id="app">
+    <div class="shell">
+
+      <!-- ═══ HEADER ═══ -->
+      <header class="header" id="header">
+        <div class="header-top">
+          <div class="header-meta">
+            <span class="badge mode-badge" id="modeLabel">FOCUS</span>
+            <span class="badge phase-badge" id="phaseLabel">--</span>
+            <span class="badge goal-badge" id="targetsLabel">Goal: --</span>
+          </div>
+          <div class="header-icons">
+            <button class="icon-btn" id="statsToggleBtn" aria-label="Toggle stats" title="Stats">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M5 19V10"/><path d="M12 19V5"/><path d="M19 19V13"/>
+              </svg>
+            </button>
+            <button class="icon-btn" id="debugToggleBtn" aria-label="Toggle debug" title="Debug">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 6h16v12H4z"/><path d="M7 9h10M7 12h10M7 15h7"/>
+              </svg>
+            </button>
+            <button class="icon-btn" id="openSettingsBtn" aria-label="Settings" title="Settings">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.13 7.13 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.22-1.12.52-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.64.22l2.39-.96c.5.41 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.22 1.12-.52 1.63-.94l2.39.96c.24.1.51.01.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="header-timer">
+          <div class="timer" id="timerLabel">00:00</div>
+          <div class="metrics" id="metricsLabel"></div>
+        </div>
+      </header>
+
+      <!-- ═══ CONTROLS ═══ -->
+      <section class="controls" id="controls">
+        <div class="controls-buttons">
+          <button class="btn btn-primary" id="startFocusBtn">Start Focus</button>
+          <button class="btn btn-default" id="pauseBtn" disabled>Pause</button>
+          <button class="btn btn-accent" id="endBreakBtn" disabled>End Break</button>
+          <button class="btn btn-warn" id="distractedBtn" disabled>I Got Distracted</button>
+          <button class="btn btn-ghost" id="resetBtn">Reset</button>
+        </div>
+        <label class="controls-option" id="autoFocusToggle">
+          <input type="checkbox" id="autoStartFocusMain" />
+          <span>Auto-start next focus after break</span>
+        </label>
+      </section>
+
+      <!-- ═══ STATS PANEL ═══ -->
+      <main class="main-content">
+        <!-- Status message (always visible) -->
+        <div class="status-bar" id="statusLabel">Press Start Focus and concentrate until you can't.</div>
+
+        <section class="card stats-card">
+          <!-- Stats summary row -->
+          <div class="stats-grid">
+            <div class="stat"><div class="stat-label">Today</div><div class="stat-value" id="todayCount">--</div></div>
+            <div class="stat"><div class="stat-label">Best</div><div class="stat-value" id="todayBest">--</div></div>
+            <div class="stat"><div class="stat-label">Floor</div><div class="stat-value" id="statFloor">--</div></div>
+            <div class="stat"><div class="stat-label">Next Goal</div><div class="stat-value" id="todayGoal">--</div></div>
+          </div>
+
+          <!-- Tab bar -->
+          <div class="chart-tabs" id="chartTabs">
+            <button class="chart-tab active" data-tab="progress">Progress</button>
+            <button class="chart-tab" data-tab="today">Today</button>
+            <button class="chart-tab" data-tab="buckets">Time of Day</button>
+            <button class="chart-tab" data-tab="consistency">Hit Rate</button>
+            <button class="chart-tab" data-tab="history">History</button>
+          </div>
+
+          <!-- Single chart canvas -->
+          <div class="chart-wrap" id="chartWrap">
+            <canvas id="mainChart"></canvas>
+          </div>
+
+          <!-- Empty state (shown when chart has no data) -->
+          <div class="chart-empty hidden" id="chartEmpty">
+            <div class="chart-empty-icon">📊</div>
+            <div class="chart-empty-text">Complete a few sessions to see your data here.</div>
+          </div>
+
+          <!-- History table (shown only on history tab) -->
+          <div class="table-wrap hidden" id="historyWrap">
+            <table id="historyTable">
+              <thead>
+                <tr>
+                  <th>#</th><th>Phase</th><th>Type</th>
+                  <th>Focus</th><th>Break</th>
+                  <th>T_low</th><th>T_high</th><th>Push</th>
+                  <th>Crash</th><th>Over</th><th>Stop</th>
+                  <th>Bucket</th><th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Debug Panel -->
+        <div class="debug-panel hidden" id="debugPanel" aria-live="polite">
+          <div class="debug-head">Debug Output</div>
+          <pre class="debug-pre" id="debugText"></pre>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ═══ SETTINGS MODAL ═══ -->
+  <div class="overlay hidden" id="modalBackdrop"></div>
+  <div class="modal hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-header">
+      <div class="modal-title" id="settingsTitle">Settings</div>
+      <button class="btn btn-pill btn-sm" id="closeSettingsBtn">Close</button>
+    </div>
+    <div class="modal-body" id="settingsBody">
+
+      <!-- General -->
+      <div class="s-section">
+        <div class="s-title">General</div>
+        <label class="s-row" title="Adjusts break lengths, push difficulty, and progression speed as a group">
+          <span>Training intensity</span>
+          <select id="intensityPreset">
+            <option>Easy</option>
+            <option selected>Balanced</option>
+            <option>Hard</option>
+          </select>
+        </label>
+        <label class="s-row" title="Scales all text and UI elements — 1.0× is the default size">
+          <span>UI scale</span>
+          <div class="s-right">
+            <input type="range" id="uiScale" min="0.75" max="1.60" step="0.05" />
+            <span class="s-val" id="uiScaleVal">1.0×</span>
+          </div>
+        </label>
+        <label class="s-row s-check" title="Reveals break multipliers, wave training parameters, and debug overrides">
+          <input type="checkbox" id="advancedToggle" />
+          <span>Show advanced settings</span>
+        </label>
+      </div>
+
+      <!-- Breaks -->
+      <div class="s-section">
+        <div class="s-title">Breaks</div>
+        <label class="s-row" title="Your break length is this percentage of your focus time. Higher = longer breaks">
+          <span>Break as % of focus</span>
+          <div class="s-right">
+            <input type="range" id="breakPercent" min="10" max="40" step="1" />
+            <span class="s-val" id="breakPercentVal">25%</span>
+          </div>
+        </label>
+        <label class="s-row" title="Breaks will never be shorter than this, even for very short focus blocks">
+          <span>Minimum break (sec)</span>
+          <input type="number" id="minBreakSec" min="0" max="600" step="5" />
+        </label>
+        <label class="s-row" title="Breaks are capped at this length no matter how long you focused">
+          <span>Maximum break (min)</span>
+          <input type="number" id="maxBreakMin" min="1" max="60" step="1" />
+        </label>
+
+        <!-- Break multipliers (advanced) -->
+        <div class="advanced-only">
+          <div class="s-divider"></div>
+          <label class="s-row" title="When you crash (end well below your floor), break is multiplied by this. Higher = more recovery time after a bad block">
+            <span>Crash break multiplier</span>
+            <div class="s-right">
+              <input type="range" id="crashMult" min="1.0" max="2.5" step="0.05" />
+              <span class="s-val" id="crashMultVal">1.50×</span>
+            </div>
+          </label>
+          <label class="s-row" title="When you overshoot (focus much longer than your ceiling), break is multiplied by this to prevent burnout">
+            <span>Overshoot break multiplier</span>
+            <div class="s-right">
+              <input type="range" id="overMult" min="1.0" max="2.0" step="0.05" />
+              <span class="s-val" id="overMultVal">1.20×</span>
+            </div>
+          </label>
+          <label class="s-row" title="Push blocks are harder stretch goals — this gives you a longer break after them">
+            <span>Push break multiplier</span>
+            <div class="s-right">
+              <input type="range" id="pushMult" min="1.0" max="2.0" step="0.05" />
+              <span class="s-val" id="pushMultVal">1.25×</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Training (advanced) -->
+      <div class="s-section advanced-only">
+        <div class="s-title">Training Cycle</div>
+        <label class="s-row" title="Controls how much wave cycle info is shown in the header badges">
+          <span>Wave visibility</span>
+          <select id="waveVisibility">
+            <option>Hidden</option>
+            <option selected>Subtle</option>
+            <option>Full</option>
+          </select>
+        </label>
+        <label class="s-row" title="When you hit a clean streak, your floor (minimum baseline) is raised by this many seconds">
+          <span>Floor raise increment (sec)</span>
+          <input type="number" id="floorIncSec" min="15" max="120" step="5" />
+        </label>
+        <label class="s-row" title="How many consecutive clean blocks (no crash, no overshoot) before the floor is raised">
+          <span>Clean streak to raise floor</span>
+          <input type="number" id="floorStreak" min="3" max="11" step="1" />
+        </label>
+        <label class="s-row" title="Push A blocks add this percentage above your floor as a stretch goal">
+          <span>Push A (% above floor)</span>
+          <div class="s-right">
+            <input type="range" id="pushA" min="0.06" max="0.20" step="0.01" />
+            <span class="s-val" id="pushAVal">12%</span>
+          </div>
+        </label>
+        <label class="s-row" title="Push B is a secondary push with a different stretch target — alternates with Push A in wave cycles">
+          <span>Push B (% above floor)</span>
+          <div class="s-right">
+            <input type="range" id="pushB" min="0.04" max="0.16" step="0.01" />
+            <span class="s-val" id="pushBVal">8%</span>
+          </div>
+        </label>
+        <div class="s-divider"></div>
+        <label class="s-row s-check" title="When enabled, replaces the adaptive goal with a fixed manual goal for testing">
+          <input type="checkbox" id="goalOverrideEnabled" />
+          <span>Manual goal override</span>
+        </label>
+        <label class="s-row" title="The fixed goal in minutes when manual override is enabled">
+          <span>Override goal (min)</span>
+          <input type="number" id="goalOverrideMin" min="1" max="240" step="1" />
+        </label>
+      </div>
+
+      <!-- Data -->
+      <div class="s-section">
+        <div class="s-title">Data</div>
+<div class="s-label">Backup (recommended)</div>
+<div class="s-btn-row">
+  <label class="btn btn-sm btn-default file-btn" title="Restore everything (history + settings + training state) from a backup JSON file">Import Backup<input type="file" id="importBackupInput" accept=".json" /></label>
+  <button class="btn btn-sm btn-default" id="exportBackupBtn" title="Download a single JSON backup containing history + settings + training state">Export Backup</button>
+  <button class="btn btn-sm btn-danger" id="resetAppBtn" title="Clear history, settings, and training state (full reset)">Reset App</button>
+</div>
+
+        <div class="s-label">History</div>
+        <div class="s-btn-row">
+          <label class="btn btn-sm btn-default file-btn" title="Load a previously exported JSONL history file">Import<input type="file" id="importJsonlInput" accept=".jsonl,.txt" /></label>
+          <button class="btn btn-sm btn-default" id="exportJsonlBtn" title="Save all focus blocks as a JSONL file">Export JSONL</button>
+          <button class="btn btn-sm btn-default" id="exportCsvBtn" title="Save all focus blocks as a CSV spreadsheet">Export CSV</button>
+          <button class="btn btn-sm btn-danger" id="clearAllBtn" title="Delete all saved focus blocks permanently">Clear All</button>
+        </div>
+        <div class="s-label">Settings</div>
+        <div class="s-btn-row">
+          <label class="btn btn-sm btn-default file-btn" title="Load settings from a previously exported JSON file">Import<input type="file" id="importSettingsInput" accept=".json" /></label>
+          <button class="btn btn-sm btn-default" id="exportSettingsBtn" title="Save your current settings to a JSON file for backup">Export</button>
+          <button class="btn btn-sm btn-default" id="resetDefaultsBtn" title="Reset all settings to their original default values">Reset Defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WIN MODAL ═══ -->
+  <div id="winModal" class="win-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="winModalTitle">
+    <div class="win-card">
+      <canvas id="confettiCanvas" class="confetti-canvas" aria-hidden="true"></canvas>
+      <div class="win-emoji" id="stickerEmoji">⭐</div>
+      <div class="win-title" id="winModalTitle">Nice. You earned a sticker.</div>
+      <div class="win-body" id="winModalText">Goal met. Sticker earned.</div>
+      <div class="win-meta">
+        <span class="streak-pill" id="stickerStreak">Streak: 1</span>
+      </div>
+      <div class="win-actions">
+        <button id="winModalOk" class="btn btn-claim">Claim It</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

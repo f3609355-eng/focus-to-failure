@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>FTF Integration Test — No replanning on tick</title>
+  <style>
+    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding:16px;}
+    .pass{color:green;} .fail{color:crimson;}
+    pre{background:#111; color:#ddd; padding:12px; border-radius:8px; overflow:auto;}
+  </style>
+</head>
+<body>
+  <h1>Integration: tick() should not recompute plan</h1>
+  <div id="out"></div>
+  <pre id="log"></pre>
+
+  <script type="module">
+    window.__FTF_TEST__ = true;
+    const log = (s)=>{ document.getElementById('log').textContent += s + "\n"; };
+    const out = document.getElementById('out');
+
+    // Import app (initializes)
+    await import("../app.js");
+
+    const h = window.__ftfTestHooks;
+    if (!h) {
+      out.innerHTML = '<p class="fail">FAIL: test hooks not found</p>';
+      throw new Error("No hooks");
+    }
+
+    // Force a plan compute once
+    h.recomputePlan();
+    const before = h.getPlanComputeCount();
+    log("Plan computes before ticks: " + before);
+
+    // Set state and tick repeatedly
+    h.setRunningState({ running:true, mode:"FOCUS", startOffsetSec:5, goalSec:60*60 });
+    for (let i=0;i<50;i++) h.tickOnce();
+
+    const after = h.getPlanComputeCount();
+    log("Plan computes after ticks: " + after);
+
+    if (after === before) {
+      out.innerHTML = '<p class="pass">PASS: tick() did not trigger replanning</p>';
+    } else {
+      out.innerHTML = '<p class="fail">FAIL: plan recomputed during tick (' + (after-before) + ' extra)</p>';
+    }
+  </script>
+</body>
+</html>

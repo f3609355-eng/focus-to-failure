@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>FTF Integration Test: Training State Persistence</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:20px}
+    .pass{color:green} .fail{color:red}
+    button{padding:10px 12px}
+  </style>
+</head>
+<body>
+  <h1>Integration Test: Training State must persist after refresh</h1>
+  <p>This test writes a synthetic training state via WavePlanner, then creates a new WavePlanner instance and confirms hydration.</p>
+  <button id="run">Run</button>
+  <div id="out"></div>
+  <script type="module">
+    import { WavePlanner, Phase, BlockType } from "../planner.js";
+    import { DEFAULT_CONFIG } from "../config.js";
+
+    function ok(cond, msg){
+      const el = document.createElement('div');
+      el.className = cond ? 'pass' : 'fail';
+      el.textContent = (cond ? 'PASS: ' : 'FAIL: ') + msg;
+      document.querySelector('#out').appendChild(el);
+      if (!cond) throw new Error(msg);
+    }
+
+    document.getElementById('run').onclick = async () => {
+      document.querySelector('#out').innerHTML = '';
+
+      // clear any existing state
+      localStorage.removeItem("ftf_training_state_v2");
+
+      const p1 = new WavePlanner(DEFAULT_CONFIG);
+      // seed some state
+      p1.phase = Phase.WAVE;
+      p1.linearGoalSec = 37*60;
+      p1.cycleId = 5;
+      p1.cyclePos = 2;
+      p1.cycle = [BlockType.PUSH_A, BlockType.CONSOLIDATE, BlockType.PUSH_B, BlockType.CONSOLIDATE, BlockType.PUSH_A];
+      p1.floorBonus = 45;
+      p1.cleanStreak = 3;
+      p1.forcedEasy = 1;
+      p1.prevRecentIQR = 6*60;
+      p1.saveTrainingState();
+
+      ok(!!localStorage.getItem("ftf_training_state_v2"), "state saved to localStorage");
+
+      const p2 = new WavePlanner(DEFAULT_CONFIG);
+      ok(p2.phase === Phase.WAVE, "phase hydrated");
+      ok(p2.linearGoalSec === 37*60, "linear goal hydrated");
+      ok(p2.cycleId === 5 && p2.cyclePos === 2, "cycle id/pos hydrated");
+      ok(Array.isArray(p2.cycle) && p2.cycle.length === 5, "cycle hydrated");
+      ok(p2.floorBonus === 45 && p2.cleanStreak === 3, "floor bonus + streak hydrated");
+      ok(p2.forcedEasy === 1 && p2.prevRecentIQR === 6*60, "forced easy + prev IQR hydrated");
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>FTF Integration Test: Goal Stable During Focus</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:20px}
+    .pass{color:green} .fail{color:red}
+    pre{background:#f6f6f6;padding:12px;border-radius:8px;overflow:auto}
+    button{padding:10px 12px}
+  </style>
+</head>
+<body>
+  <h1>Integration Test: Goal must not change mid-focus</h1>
+  <p>This test uses app test hooks and verifies that the goal and plan are stable across ticks (no replanning during focus).</p>
+  <button id="run">Run</button>
+  <div id="out"></div>
+  <script type="module">
+    // enable hooks before app loads
+    window.__FTF_TEST__ = true;
+
+    function ok(cond, msg){
+      const el = document.createElement('div');
+      el.className = cond ? 'pass' : 'fail';
+      el.textContent = (cond ? 'PASS: ' : 'FAIL: ') + msg;
+      document.querySelector('#out').appendChild(el);
+      if (!cond) throw new Error(msg);
+    }
+
+    document.getElementById('run').onclick = async () => {
+      document.querySelector('#out').innerHTML = '';
+      // load app (it will init)
+      await import('../app.js');
+
+      const hooks = window.__ftfTestHooks;
+      ok(!!hooks, 'test hooks exist');
+
+      // force a plan compute, then start a focus run with that goal
+      const beforeCount = hooks.getPlanComputeCount();
+      const plan = hooks.recomputePlan();
+      ok(!!plan && typeof plan.goal_sec === 'number', 'plan computed');
+      const g0 = plan.goal_sec;
+
+      hooks.setRunningState({ running:true, mode:'FOCUS', startOffsetSec: 5, goalSec: g0 });
+
+      // tick a bunch
+      for (let i=0;i<40;i++) hooks.tickOnce();
+
+      const afterCount = hooks.getPlanComputeCount();
+      ok(afterCount === beforeCount + 1, 'planning count unchanged during ticks (only the one recomputePlan)');
+      const plan2 = hooks.recomputePlan();
+      ok(plan2.goal_sec === g0, 'recomputePlan returns same goal when history unchanged (deterministic under seedless plan)');
+    };
+  </script>
+</body>
+</html>

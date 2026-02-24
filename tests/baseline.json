@@ -1,0 +1,72 @@
+{
+  "steady": {
+    "fingerprint": {
+      "n": 40,
+      "lastGoal": 1749,
+      "lastFocus": 1900,
+      "avgGoal": 1542.9625,
+      "avgFocus": 1506.45,
+      "winRate": 0.475,
+      "phaseCounts": {
+        "LINEAR": 17,
+        "WAVE": 23
+      }
+    }
+  },
+  "volatile": {
+    "fingerprint": {
+      "n": 40,
+      "lastGoal": 1530,
+      "lastFocus": 1651,
+      "avgGoal": 1311.8166666666666,
+      "avgFocus": 1139.5,
+      "winRate": 0.35,
+      "phaseCounts": {
+        "LINEAR": 5,
+        "WAVE": 35
+      }
+    }
+  },
+  "plateau": {
+    "fingerprint": {
+      "n": 56,
+      "lastGoal": 1530,
+      "lastFocus": 1437,
+      "avgGoal": 1514.732142857143,
+      "avgFocus": 1378.9464285714287,
+      "winRate": 0.4107142857142857,
+      "phaseCounts": {
+        "LINEAR": 9,
+        "WAVE": 47
+      }
+    }
+  },
+  "gaps": {
+    "fingerprint": {
+      "n": 42,
+      "lastGoal": 1825,
+      "lastFocus": 1881,
+      "avgGoal": 1571.357142857143,
+      "avgFocus": 1571.952380952381,
+      "winRate": 0.6666666666666666,
+      "phaseCounts": {
+        "LINEAR": 7,
+        "WAVE": 35
+      }
+    }
+  },
+  "elite": {
+    "fingerprint": {
+      "n": 40,
+      "lastGoal": 1964,
+      "lastFocus": 2062,
+      "avgGoal": 1730.3166666666668,
+      "avgFocus": 1805.825,
+      "winRate": 0.625,
+      "phaseCounts": {
+        "LINEAR": 6,
+        "WAVE": 34
+      }
+    }
+  }
+}
