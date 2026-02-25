@@ -5,7 +5,7 @@ import { computeMetrics } from "./analytics.js";
 import { blendMetrics } from "./engine/blendEngine.js";
 import { WavePlanner, Phase, BlockType } from "./planner.js";
 
-const VERSION = "4.0.6";
+const VERSION = "4.1.0";
 import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution, destroyChart } from "./charts.js";
 
 // ════════════════════════════════════════════════
@@ -13,6 +13,8 @@ import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution,
 // ════════════════════════════════════════════════
 
 const $ = (id) => document.getElementById(id);
+/** Safe property setter: $(id).prop = val, but null-safe */
+const $set = (id, prop, val) => { const el = $(id); if (el) el[prop] = val; };
 
 // ════════════════════════════════════════════════
 // State
@@ -22,12 +24,12 @@ let cfg = deepCopy(DEFAULT_CONFIG);
 const savedCfg = getConfig();
 if (savedCfg) deepMerge(cfg, savedCfg);
 
-// Migrate old ui_scale format (raw CSS value like 1.35) → new format (1.0 = default)
-if (savedCfg?.window?.ui_scale != null && !localStorage.getItem("ftf_scale_v2")) {
-  cfg.window.ui_scale = Math.round((cfg.window.ui_scale / 1.35) * 100) / 100;
+// UI scale migration: reset to new default (1.0 = 16px base)
+if (!localStorage.getItem("ftf_scale_v3")) {
+  cfg.window.ui_scale = 1.0;
   setConfig(cfg);
 }
-localStorage.setItem("ftf_scale_v2", "1");
+localStorage.setItem("ftf_scale_v3", "1");
 
 // Migrate renamed config keys (v3.1)
 const _keyRenames = [
@@ -106,7 +108,7 @@ function setStatus(text, tone = "calm") {
   const el = $("statusLabel");
   if (!el) return;
   el.textContent = text;
-  el.className = "status-bar" + (tone ? ` status-${tone}` : "");
+  el.className = "header-status" + (tone ? ` status-${tone}` : "");
 }
 
 // ════════════════════════════════════════════════
@@ -289,13 +291,13 @@ function computeBreakSeconds(focusSeconds, crash = false, overshoot = false, isP
 // ════════════════════════════════════════════════
 
 // UI scale: slider value 1.0 = default look. Actual CSS = slider × 1.35
-const UI_SCALE_BASE = 1.35;
+const UI_SCALE_BASE = 1.0;
 
 function applyUIScale() {
   const actual = cfg.window.ui_scale * UI_SCALE_BASE;
   document.documentElement.style.setProperty("--ui-scale", String(actual));
-  $("uiScaleVal").textContent = `${cfg.window.ui_scale.toFixed(2)}×`;
-  $("uiScale").value = cfg.window.ui_scale;
+  const valEl = $("uiScaleVal"); if (valEl) valEl.textContent = `${cfg.window.ui_scale.toFixed(2)}×`;
+  const slEl = $("uiScale"); if (slEl) slEl.value = cfg.window.ui_scale;
   setTimeout(() => {
     try { redrawCharts(); } catch {}
   }, 60);
@@ -309,7 +311,7 @@ function loadAdvancedFlag() {
   const on = localStorage.getItem("ftf_advanced") === "1";
   document.body.classList.toggle("advanced", on);
   document.body.classList.toggle("simple", !on);
-  $("advancedToggle").checked = on;
+  const adEl = $("advancedToggle"); if (adEl) adEl.checked = on;
 }
 
 function setAdvancedFlag(on) {
@@ -330,33 +332,34 @@ function setSettingsControlsFromCfg() {
   const b = cfg.breaks;
   const w = cfg.wave;
   const d = cfg.debug;
+  const set = (id, prop, val) => { const el = $(id); if (el) el[prop] = val; };
 
-  $("breakPercent").value = b.break_percent;
-  $("breakPercentVal").textContent = `${Math.round(b.break_percent)}%`;
-  $("maxBreakMin").value = b.max_break_minutes;
-  $("minBreakSec").value = b.min_break_seconds;
+  set("breakPercent", "value", b.break_percent);
+  set("breakPercentVal", "textContent", `${Math.round(b.break_percent)}%`);
+  set("maxBreakMin", "value", b.max_break_minutes);
+  set("minBreakSec", "value", b.min_break_seconds);
 
-  $("crashMult").value = b.crash_break_multiplier;
-  $("crashMultVal").textContent = `${b.crash_break_multiplier.toFixed(2)}×`;
-  $("overMult").value = b.overshoot_break_multiplier;
-  $("overMultVal").textContent = `${b.overshoot_break_multiplier.toFixed(2)}×`;
-  $("pushMult").value = b.push_break_multiplier;
-  $("pushMultVal").textContent = `${b.push_break_multiplier.toFixed(2)}×`;
+  set("crashMult", "value", b.crash_break_multiplier);
+  set("crashMultVal", "textContent", `${b.crash_break_multiplier.toFixed(2)}×`);
+  set("overMult", "value", b.overshoot_break_multiplier);
+  set("overMultVal", "textContent", `${b.overshoot_break_multiplier.toFixed(2)}×`);
+  set("pushMult", "value", b.push_break_multiplier);
+  set("pushMultVal", "textContent", `${b.push_break_multiplier.toFixed(2)}×`);
 
-  $("autoStartFocusMain").checked = b.auto_start_next_focus;
+  set("autoStartFocusMain", "checked", b.auto_start_next_focus);
 
-  $("waveVisibility").value = w.wave_visibility;
+  set("waveVisibility", "value", w.wave_visibility);
 
   if ($("fatigueRate")) {
-    $("fatigueRate").value = w.fatigue_rate_per_block;
-    $("fatigueRateVal").textContent = `${Math.round(w.fatigue_rate_per_block * 100)}%`;
+    set("fatigueRate", "value", w.fatigue_rate_per_block);
+    set("fatigueRateVal", "textContent", `${Math.round(w.fatigue_rate_per_block * 100)}%`);
   }
 
-  $("uiScale").value = cfg.window.ui_scale;
-  $("uiScaleVal").textContent = `${cfg.window.ui_scale.toFixed(2)}×`;
+  set("uiScale", "value", cfg.window.ui_scale);
+  set("uiScaleVal", "textContent", `${cfg.window.ui_scale.toFixed(2)}×`);
 
   if ($("goalOverrideEnabled")) $("goalOverrideEnabled").checked = !!d.goal_override_enabled;
-  if ($("goalOverrideMin")) $("goalOverrideMin").value = d.goal_override_minutes;
+  if ($("goalOverrideMin")) { const _e = $("goalOverrideMin"); if (_e) _e.value = d.goal_override_minutes; }
 }
 
 // ════════════════════════════════════════════════
@@ -511,10 +514,10 @@ function syncTodayCard() {
   const streak = currentStreak();
   const winRate = computeWinRate(10);
 
-  $("todayCount").textContent = String(s.count || 0);
-  $("statStreak").textContent = streak > 0 ? `${streak} 🔥` : "0";
-  $("statFloor").textContent = plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--";
-  $("todayGoal").textContent = fmtHHMMSS(plan.goal_sec || 0);
+  $set("todayCount", "textContent", String(s.count || 0));
+  $set("statStreak", "textContent", streak > 0 ? `${streak} 🔥` : "0");
+  $set("statFloor", "textContent", plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--");
+  $set("todayGoal", "textContent", fmtHHMMSS(plan.goal_sec || 0));
 
   // Context line beneath stats
   const ctx = $("statsContext");
@@ -713,9 +716,9 @@ function renderHeader(h) {
   const zenEl = $("zenIndicator");
   if (zenEl) zenEl.textContent = h.zenText;
 
-  $("timerLabel").textContent = h.timerText;
-  $("targetsLabel").textContent = h.goalText;
-  $("phaseLabel").textContent = h.phaseText;
+  $set("timerLabel", "textContent", h.timerText);
+  $set("targetsLabel", "textContent", h.goalText);
+  $set("phaseLabel", "textContent", h.phaseText);
 
   const metricsEl = $("metricsLabel");
   if (metricsEl) {
@@ -747,9 +750,8 @@ function syncControls(uiState) {
   if (done) done.disabled = !canStop;
   if (dist) dist.disabled = !canStop;
 
-  // Reset: always enabled (safe; does not clear history)
-  const canReset = true;
-  if (reset) reset.disabled = !canReset;
+  // Reset: enabled when timer is active
+  if (reset) reset.disabled = (uiState === "idle");
 
   switch (uiState) {
     case "focusing":
@@ -855,7 +857,7 @@ function rowHTML(b) {
 }
 
 function renderTable() {
-  $("historyBody").innerHTML = blocks.map(rowHTML).join("");
+  $set("historyBody", "innerHTML", blocks.map(rowHTML).join(""));
 }
 
 // ════════════════════════════════════════════════
@@ -888,7 +890,7 @@ function tick() {
     elapsed = Math.max(0, rem);
     if (elapsed <= 0) { finishBreak(); return; }
   }
-  $("timerLabel").textContent = fmtHHMMSS(elapsed);
+  $set("timerLabel", "textContent", fmtHHMMSS(elapsed));
 }
 
 function startFocus() {
@@ -1259,28 +1261,28 @@ function renderMilestones() {
 // ════════════════════════════════════════════════
 
 function openSettings() {
-  $("modalBackdrop").classList.remove("hidden");
-  $("settingsModal").classList.remove("hidden");
+  $("modalBackdrop")?.classList.remove("hidden");
+  $("settingsModal")?.classList.remove("hidden");
   document.body.classList.add("modal-open");
   setSettingsControlsFromCfg();
   loadAdvancedFlag();
 }
 
 function closeSettings() {
-  $("modalBackdrop").classList.add("hidden");
-  $("settingsModal").classList.add("hidden");
+  $("modalBackdrop")?.classList.add("hidden");
+  $("settingsModal")?.classList.add("hidden");
   document.body.classList.remove("modal-open");
 }
 
 function openAbout() {
-  $("modalBackdrop").classList.remove("hidden");
-  $("aboutModal").classList.remove("hidden");
+  $("modalBackdrop")?.classList.remove("hidden");
+  $("aboutModal")?.classList.remove("hidden");
   document.body.classList.add("modal-open");
 }
 
 function closeAbout() {
-  $("modalBackdrop").classList.add("hidden");
-  $("aboutModal").classList.add("hidden");
+  $("modalBackdrop")?.classList.add("hidden");
+  $("aboutModal")?.classList.add("hidden");
   document.body.classList.remove("modal-open");
 }
 
@@ -1367,7 +1369,7 @@ function resetSettingsToDefault() {
   cfg = deepCopy(DEFAULT_CONFIG);
   planner = new WavePlanner(cfg);
   localStorage.setItem("ftf_intensity", "Balanced");
-  $("intensityPreset").value = "Balanced";
+  { const _e = $("intensityPreset"); if (_e) _e.value = "Balanced"; }
   persistConfig();
   setSettingsControlsFromCfg();
   applyUIScale();
@@ -1453,7 +1455,7 @@ async function importSettings(file) {
 
     if (data.intensity) {
       localStorage.setItem("ftf_intensity", data.intensity);
-      $("intensityPreset").value = data.intensity;
+      { const _e = $("intensityPreset"); if (_e) _e.value = data.intensity; }
     }
     if (data.advanced != null) {
       localStorage.setItem("ftf_advanced", data.advanced);
@@ -1487,7 +1489,7 @@ function wireMainButtons() {
     else if (state === "break") endBreakEarly();
     else startFocus(); // idle / default
   });
-  $("distractedBtn").addEventListener("click", () => finalizeFocus("DISTRACTED"));
+  $("distractedBtn")?.addEventListener("click", () => finalizeFocus("DISTRACTED"));
   $("doneBtn")?.addEventListener("click", () => finalizeFocus("COMPLETED"));
   $("resetBtn")?.addEventListener("click", resetTimer);
 
@@ -1495,11 +1497,11 @@ function wireMainButtons() {
   $("zenToggleBtn")?.addEventListener("click", toggleZen);
   applyZenMode();
 
-  $("openSettingsBtn").addEventListener("click", openSettings);
-  $("closeSettingsBtn").addEventListener("click", closeSettings);
+  $("openSettingsBtn")?.addEventListener("click", openSettings);
+  $("closeSettingsBtn")?.addEventListener("click", closeSettings);
   $("openAboutBtn")?.addEventListener("click", openAbout);
   $("closeAboutBtn")?.addEventListener("click", closeAbout);
-  $("modalBackdrop").addEventListener("click", () => { closeSettings(); closeAbout(); });
+  $("modalBackdrop")?.addEventListener("click", () => { closeSettings(); closeAbout(); });
 
   // Win modal
   $("winModalOk")?.addEventListener("click", hideWinModal);
@@ -1570,50 +1572,50 @@ function wireSettings() {
 
   // Intensity preset
   const presetSaved = localStorage.getItem("ftf_intensity") || "Balanced";
-  $("intensityPreset").value = presetSaved;
-  $("intensityPreset").addEventListener("change", () => {
+  { const _e = $("intensityPreset"); if (_e) _e.value = presetSaved; }
+  $("intensityPreset")?.addEventListener("change", () => {
     const p = $("intensityPreset").value;
     localStorage.setItem("ftf_intensity", p);
     applyIntensityPreset(p);
   });
 
   // Advanced toggle
-  $("advancedToggle").addEventListener("change", () => setAdvancedFlag($("advancedToggle").checked));
+  $("advancedToggle")?.addEventListener("change", () => setAdvancedFlag($("advancedToggle").checked));
 
   // Break settings
-  $("breakPercent").addEventListener("input", () => {
+  $("breakPercent")?.addEventListener("input", () => {
     cfg.breaks.break_percent = Number($("breakPercent").value);
     $("breakPercentVal").textContent = `${Math.round(cfg.breaks.break_percent)}%`;
     persistConfig();
   });
-  $("maxBreakMin").addEventListener("change", () => { cfg.breaks.max_break_minutes = Number($("maxBreakMin").value); persistConfig(); });
-  $("minBreakSec").addEventListener("change", () => { cfg.breaks.min_break_seconds = Number($("minBreakSec").value); persistConfig(); });
+  $("maxBreakMin")?.addEventListener("change", () => { cfg.breaks.max_break_minutes = Number($("maxBreakMin").value); persistConfig(); });
+  $("minBreakSec")?.addEventListener("change", () => { cfg.breaks.min_break_seconds = Number($("minBreakSec").value); persistConfig(); });
 
-  $("crashMult").addEventListener("input", () => {
+  $("crashMult")?.addEventListener("input", () => {
     cfg.breaks.crash_break_multiplier = Number($("crashMult").value);
     $("crashMultVal").textContent = `${cfg.breaks.crash_break_multiplier.toFixed(2)}×`;
     persistConfig();
   });
-  $("overMult").addEventListener("input", () => {
+  $("overMult")?.addEventListener("input", () => {
     cfg.breaks.overshoot_break_multiplier = Number($("overMult").value);
     $("overMultVal").textContent = `${cfg.breaks.overshoot_break_multiplier.toFixed(2)}×`;
     persistConfig();
   });
-  $("pushMult").addEventListener("input", () => {
+  $("pushMult")?.addEventListener("input", () => {
     cfg.breaks.push_break_multiplier = Number($("pushMult").value);
     $("pushMultVal").textContent = `${cfg.breaks.push_break_multiplier.toFixed(2)}×`;
     persistConfig();
   });
-  $("autoStartFocusMain").addEventListener("change", () => {
+  $("autoStartFocusMain")?.addEventListener("change", () => {
     cfg.breaks.auto_start_next_focus = $("autoStartFocusMain").checked;
     persistConfig();
   });
 
   // Wave settings
-  $("waveVisibility").addEventListener("change", () => { cfg.wave.wave_visibility = $("waveVisibility").value; persistConfig(); syncHeader(); });
+  $("waveVisibility")?.addEventListener("change", () => { cfg.wave.wave_visibility = $("waveVisibility").value; persistConfig(); syncHeader(); });
 
   if ($("fatigueRate")) {
-    $("fatigueRate").addEventListener("input", () => {
+    $("fatigueRate")?.addEventListener("input", () => {
       cfg.wave.fatigue_rate_per_block = Number($("fatigueRate").value);
       $("fatigueRateVal").textContent = `${Math.round(cfg.wave.fatigue_rate_per_block * 100)}%`;
       persistConfig();
@@ -1623,7 +1625,7 @@ function wireSettings() {
   }
 
   // UI scale
-  $("uiScale").addEventListener("input", () => {
+  $("uiScale")?.addEventListener("input", () => {
     cfg.window.ui_scale = Number($("uiScale").value);
     applyUIScale();
     persistConfig();
@@ -1642,11 +1644,11 @@ function wireSettings() {
   });
 
   // Data buttons
-  $("exportCsvBtn").addEventListener("click", exportCSV);
-  $("exportJsonlBtn").addEventListener("click", exportJSONL);
-  $("clearAllBtn").addEventListener("click", clearAllData);
-  $("resetDefaultsBtn").addEventListener("click", resetSettingsToDefault);
-  $("exportSettingsBtn").addEventListener("click", exportSettings);
+  $("exportCsvBtn")?.addEventListener("click", exportCSV);
+  $("exportJsonlBtn")?.addEventListener("click", exportJSONL);
+  $("clearAllBtn")?.addEventListener("click", clearAllData);
+  $("resetDefaultsBtn")?.addEventListener("click", resetSettingsToDefault);
+  $("exportSettingsBtn")?.addEventListener("click", exportSettings);
 
   $("exportBackupBtn")?.addEventListener("click", exportBackupFile);
   $("resetAppBtn")?.addEventListener("click", resetApp);
@@ -1658,14 +1660,14 @@ function wireSettings() {
     e.target.value = "";
   });
 
-  $("importSettingsInput").addEventListener("change", async (e) => {
+  $("importSettingsInput")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     await importSettings(file);
     e.target.value = "";
   });
 
-  $("importJsonlInput").addEventListener("change", async (e) => {
+  $("importJsonlInput")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     await importJSONLText(await file.text());
@@ -1687,7 +1689,7 @@ async function init() {
   // but DON'T call applyIntensityPreset — that would overwrite
   // any custom settings the user tweaked after picking a preset.
   const savedPreset = localStorage.getItem("ftf_intensity") || "Balanced";
-  $("intensityPreset").value = savedPreset;
+  { const _e = $("intensityPreset"); if (_e) _e.value = savedPreset; }
 
   loadAdvancedFlag();
 
@@ -1746,12 +1748,12 @@ init().catch((err) => {
   document.body.innerHTML = `
     <div style="max-width:420px;margin:60px auto;padding:24px;font-family:system-ui;text-align:center">
       <h2 style="color:#dc2626">Something went wrong</h2>
-      <p style="color:#6b6b6b;font-size:14px">The app couldn't start. This is usually caused by corrupted local data.</p>
+      <p style="color:#6b6b6b;font-size:14px">The app couldn't start. This is usually caused by corrupted local data or a stale cache.</p>
       <p style="color:#6b6b6b;font-size:13px;word-break:break-all">${String(err?.message || err)}</p>
-      <button onclick="localStorage.clear();indexedDB.deleteDatabase('FocusToFailureDB');location.reload()"
+      <button onclick="(async()=>{try{localStorage.clear();indexedDB.deleteDatabase('FocusToFailureDB');if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}const regs=await navigator.serviceWorker?.getRegistrations()||[];await Promise.all(regs.map(r=>r.unregister()));}catch(e){}location.reload();})()"
         style="margin-top:16px;padding:10px 24px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer">
         Reset App &amp; Reload
       </button>
-      <p style="color:#999;font-size:11px;margin-top:12px">This clears all local data. Export a backup first if possible.</p>
+      <p style="color:#999;font-size:11px;margin-top:12px">This clears all local data and cached files. Export a backup first if possible.</p>
     </div>`;
 });

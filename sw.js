@@ -1,4 +1,4 @@
-const CACHE_NAME = "ftf-v4.0.6";
+const CACHE_NAME = "ftf-v4.1.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -34,14 +34,20 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  // Network-first for HTML (to get updates), cache-first for assets
-  if (e.request.mode === "navigate") {
+  // Network-first for all same-origin requests — prevents stale JS/CSS cache mismatches
+  const url = new URL(e.request.url);
+  if (url.origin === self.location.origin) {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request)
+        .then((r) => {
+          // Update cache with fresh response
+          const clone = r.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          return r;
+        })
+        .catch(() => caches.match(e.request))
     );
   } else {
-    e.respondWith(
-      caches.match(e.request).then((r) => r || fetch(e.request))
-    );
+    e.respondWith(fetch(e.request));
   }
 });
