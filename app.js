@@ -4,7 +4,9 @@ import { fmtHHMMSS, fmtMin, nowTimestamp, bucketForDate, downloadText, escHTML }
 import { computeMetrics } from "./analytics.js";
 import { blendMetrics } from "./engine/blendEngine.js";
 import { WavePlanner, Phase, BlockType } from "./planner.js";
-import { drawProgress, drawToday, drawBuckets, drawConsistency, destroyChart } from "./charts.js";
+
+const VERSION = "4.0.1";
+import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution, destroyChart } from "./charts.js";
 
 // ════════════════════════════════════════════════
 // DOM Helpers
@@ -27,6 +29,39 @@ if (savedCfg?.window?.ui_scale != null && !localStorage.getItem("ftf_scale_v2"))
 }
 localStorage.setItem("ftf_scale_v2", "1");
 
+// Migrate renamed config keys (v3.1)
+const _keyRenames = [
+  ["push_a_pct_of_median", "push_a_pct_above_floor"],
+  ["push_b_pct_of_median", "push_b_pct_above_floor"],
+  ["target_band_add_minutes_stability", "consolidate_band_add_minutes"],
+  ["easy_consolidate_band_add_minutes", "easy_band_add_minutes"],
+];
+let _cfgMigrated = false;
+for (const [oldKey, newKey] of _keyRenames) {
+  if (cfg.wave[oldKey] !== undefined) {
+    if (cfg.wave[newKey] === undefined) cfg.wave[newKey] = cfg.wave[oldKey];
+    delete cfg.wave[oldKey];
+    _cfgMigrated = true;
+  }
+}
+
+// Growth v2 migration: remove deprecated keys, add new defaults
+const _deadWaveKeys = [
+  "push_a_pct_above_floor", "push_b_pct_above_floor",
+  "floor_raise_clean_streak", "floor_raise_increment_seconds",
+  "floor_bonus_cap_minutes", "forced_easy_consolidate_blocks_after_crash",
+];
+for (const k of _deadWaveKeys) {
+  if (cfg.wave[k] !== undefined) { delete cfg.wave[k]; _cfgMigrated = true; }
+}
+// Unify analytics percentile to match floor engine
+if (cfg.analytics?.floor_percentile !== 0.35) {
+  cfg.analytics.floor_percentile = 0.35;
+  _cfgMigrated = true;
+}
+if (cfg.ux) { delete cfg.ux; _cfgMigrated = true; }
+if (_cfgMigrated) setConfig(cfg);
+
 let cached = { m:null, plan:null, bucketNow:null };
 let planComputeCount = 0;
 let focusStartSnapshot = { m:null, plan:null, goalSec:0 };
@@ -41,9 +76,17 @@ let breakTotal = 0;
 let tickHandle = null;
 let goalHitDuringFocus = false;
 let goalHitAt = null;
+let pauseCount = 0;
+let pauseTotal = 0;
+let pauseStartedAt = null;
 
 let activeTab = "progress";
 let settingsWired = false;
+let zenMode = localStorage.getItem("ftf_zen") === "1";
+let lastAutoSave = 0;
+
+const SESSION_KEY = "ftf_inflight_session";
+const AUTOSAVE_INTERVAL_MS = 15_000; // save every 15s during focus
 
 // ════════════════════════════════════════════════
 // Config Persistence
@@ -52,7 +95,175 @@ let settingsWired = false;
 function persistConfig() {
   setConfig(cfg);
   planner.setConfig(cfg);
+  invalidateCache();
 }
+
+function invalidateCache() {
+  cached = { m: null, plan: null, bucketNow: null };
+}
+
+function setStatus(text, tone = "calm") {
+  const el = $("statusLabel");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "status-bar" + (tone ? ` status-${tone}` : "");
+}
+
+// ════════════════════════════════════════════════
+// Session Recovery (power loss / tab close)
+// ════════════════════════════════════════════════
+
+function saveInflightSession() {
+  if (mode !== "FOCUS" || startTS == null) return;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      elapsed,
+      goalSec: focusStartSnapshot.goalSec || 0,
+      planSnapshot: focusStartSnapshot.plan ? {
+        phase: focusStartSnapshot.plan.phase,
+        block_type: focusStartSnapshot.plan.block_type,
+        goal_sec: focusStartSnapshot.plan.goal_sec,
+        floor_sec: focusStartSnapshot.plan.floor_sec,
+        min_goal_sec: focusStartSnapshot.plan.min_goal_sec,
+        push_target: focusStartSnapshot.plan.push_target,
+        target_low: focusStartSnapshot.plan.target_low,
+        target_high: focusStartSnapshot.plan.target_high,
+        wave_cycle_id: focusStartSnapshot.plan.wave_cycle_id,
+        wave_cycle_pos: focusStartSnapshot.plan.wave_cycle_pos,
+      } : null,
+      metricsSnapshot: focusStartSnapshot.m ? {
+        floor: focusStartSnapshot.m.floor,
+        median: focusStartSnapshot.m.median,
+        ceiling: focusStartSnapshot.m.ceiling,
+        crash_threshold: focusStartSnapshot.m.crash_threshold,
+        overshoot_threshold: focusStartSnapshot.m.overshoot_threshold,
+        floor_global: focusStartSnapshot.m.floor_global,
+        floor_bucket: focusStartSnapshot.m.floor_bucket,
+        median_global: focusStartSnapshot.m.median_global,
+        median_bucket: focusStartSnapshot.m.median_bucket,
+        bucket_weight: focusStartSnapshot.m.bucket_weight,
+        bucket_n: focusStartSnapshot.m.bucket_n,
+      } : null,
+      savedAt: Date.now(),
+      timestamp: nowTimestamp(),
+      bucket: bucketForDate(new Date()),
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function clearInflightSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+}
+
+function getInflightSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Discard if older than 12 hours (stale crash)
+    if (Date.now() - (s.savedAt || 0) > 12 * 3600 * 1000) {
+      clearInflightSession();
+      return null;
+    }
+    if (!s.elapsed || s.elapsed < 10) {
+      clearInflightSession();
+      return null;
+    }
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function recoverSession(session) {
+  const focusSeconds = Math.floor(session.elapsed);
+  const plan = session.planSnapshot || {};
+  const m = session.metricsSnapshot || {};
+  const goalSec = Number(plan.goal_sec || session.goalSec || 0);
+
+  const crash = m.crash_threshold != null && focusSeconds < m.crash_threshold;
+  const overshoot = m.overshoot_threshold != null && focusSeconds > m.overshoot_threshold;
+  const isPush = plan.block_type === "PUSH" || plan.block_type === "PUSH_A" || plan.block_type === "PUSH_B";
+  const pushTarget = isPush ? (plan.push_target || 0) : 0;
+  const pushHit = isPush ? focusSeconds >= pushTarget : false;
+  const breakSeconds = computeBreakSeconds(focusSeconds, crash, overshoot, isPush);
+  const isWin = goalSec > 0 && focusSeconds >= goalSec;
+
+  const idx = blocks.length ? Math.max(...blocks.map(b => b.idx)) + 1 : 1;
+  const block = {
+    idx,
+    goal_seconds: goalSec,
+    min_goal_seconds: plan.min_goal_sec || 0,
+    floor_seconds: plan.floor_sec || 0,
+    floor_global_seconds: m.floor_global || null,
+    floor_bucket_seconds: m.floor_bucket || null,
+    floor_effective_seconds: m.floor || null,
+    bucket_weight: m.bucket_weight || 0,
+    bucket_n: m.bucket_n || 0,
+    median_global_seconds: m.median_global || null,
+    median_bucket_seconds: m.median_bucket || null,
+    median_effective_seconds: m.median || null,
+    ceiling_global_seconds: null,
+    ceiling_bucket_seconds: null,
+    ceiling_effective_seconds: m.ceiling || null,
+    validity: "recovered",
+    focus_seconds: focusSeconds,
+    is_win: isWin,
+    break_seconds: breakSeconds,
+    timestamp: session.timestamp || nowTimestamp(),
+    bucket: session.bucket || bucketForDate(new Date()),
+    phase: plan.phase || "LINEAR",
+    block_type: plan.block_type || "CONSOLIDATE",
+    target_low_seconds: plan.target_low || 0,
+    target_high_seconds: plan.target_high || 0,
+    push_target_seconds: pushTarget,
+    push_hit: pushHit,
+    crash,
+    overshoot,
+    stop_reason: "RECOVERED",
+    wave_cycle_id: plan.wave_cycle_id || 0,
+    wave_cycle_pos: plan.wave_cycle_pos || 0,
+  };
+
+  blocks.push(block);
+  await putBlock(block);
+  planner.updateAfterBlock(block);
+  invalidateCache();
+  clearInflightSession();
+
+  renderTable();
+  redrawCharts();
+  syncHeader();
+  setStatus(`Recovered ${fmtHHMMSS(focusSeconds)} focus block from interrupted session.`, "good");
+}
+
+// ════════════════════════════════════════════════
+// Zen Mode (hide timer during focus)
+// ════════════════════════════════════════════════
+
+function applyZenMode() {
+  document.body.classList.toggle("zen", zenMode);
+  const btn = $("zenToggleBtn");
+  if (btn) btn.title = zenMode ? "Show timer" : "Hide timer";
+}
+
+function toggleZen() {
+  zenMode = !zenMode;
+  localStorage.setItem("ftf_zen", zenMode ? "1" : "0");
+  applyZenMode();
+}
+
+// ════════════════════════════════════════════════
+// beforeunload (warn during active focus)
+// ════════════════════════════════════════════════
+
+window.addEventListener("beforeunload", (e) => {
+  if (mode === "FOCUS" && startTS != null && running) {
+    saveInflightSession();
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
 
 // ════════════════════════════════════════════════
 // Break Computation
@@ -135,13 +346,11 @@ function setSettingsControlsFromCfg() {
   $("autoStartFocusMain").checked = b.auto_start_next_focus;
 
   $("waveVisibility").value = w.wave_visibility;
-  $("floorIncSec").value = w.floor_raise_increment_seconds;
-  $("floorStreak").value = w.floor_raise_clean_streak;
 
-  $("pushA").value = w.push_a_pct_of_median;
-  $("pushAVal").textContent = `${Math.round(w.push_a_pct_of_median * 100)}%`;
-  $("pushB").value = w.push_b_pct_of_median;
-  $("pushBVal").textContent = `${Math.round(w.push_b_pct_of_median * 100)}%`;
+  if ($("fatigueRate")) {
+    $("fatigueRate").value = w.fatigue_rate_per_block;
+    $("fatigueRateVal").textContent = `${Math.round(w.fatigue_rate_per_block * 100)}%`;
+  }
 
   $("uiScale").value = cfg.window.ui_scale;
   $("uiScaleVal").textContent = `${cfg.window.ui_scale.toFixed(2)}×`;
@@ -157,13 +366,13 @@ function setSettingsControlsFromCfg() {
 function applyIntensityPreset(preset) {
   if (preset === "Easy") {
     Object.assign(cfg.breaks, { break_percent: 30, crash_break_multiplier: 1.7, overshoot_break_multiplier: 1.25 });
-    Object.assign(cfg.wave, { push_a_pct_of_median: 0.10, push_b_pct_of_median: 0.06, floor_raise_clean_streak: 7 });
+    Object.assign(cfg.wave, { push_pct_high: 0.10, push_pct_mid: 0.06, push_pct_low: 0.04, fatigue_rate_per_block: 0.08 });
   } else if (preset === "Hard") {
     Object.assign(cfg.breaks, { break_percent: 20, crash_break_multiplier: 1.35, overshoot_break_multiplier: 1.15 });
-    Object.assign(cfg.wave, { push_a_pct_of_median: 0.14, push_b_pct_of_median: 0.10, floor_raise_clean_streak: 5 });
+    Object.assign(cfg.wave, { push_pct_high: 0.15, push_pct_mid: 0.10, push_pct_low: 0.06, fatigue_rate_per_block: 0.04 });
   } else {
     Object.assign(cfg.breaks, { break_percent: 25, crash_break_multiplier: 1.5, overshoot_break_multiplier: 1.2 });
-    Object.assign(cfg.wave, { push_a_pct_of_median: 0.12, push_b_pct_of_median: 0.08, floor_raise_clean_streak: 5 });
+    Object.assign(cfg.wave, { push_pct_high: 0.12, push_pct_mid: 0.08, push_pct_low: 0.05, fatigue_rate_per_block: 0.06 });
   }
   persistConfig();
   setSettingsControlsFromCfg();
@@ -178,7 +387,15 @@ function applyIntensityPreset(preset) {
 function planNow() {
   planComputeCount++;
   const bucketNow = bucketForDate(new Date());
-  const bucketBlocks = blocks.filter((b) => b && b.bucket === bucketNow);
+  const allBucketBlocks = blocks.filter((b) => b && b.bucket === bucketNow);
+
+  // A3: Recency-weighted bucket — only use bucket blocks from recent N days
+  const recencyDays = Number(cfg.analytics.bucket_recency_days || 30);
+  const cutoff = Date.now() - recencyDays * 86400000;
+  const bucketBlocks = allBucketBlocks.filter((b) => {
+    const t = Date.parse((b.timestamp || "").replace(" ", "T"));
+    return Number.isNaN(t) || t >= cutoff; // keep if no timestamp (legacy) or recent
+  });
 
   const mGlobal = computeMetrics(blocks, cfg);
   const mBucket = computeMetrics(bucketBlocks, cfg);
@@ -208,7 +425,17 @@ const m = {
 };
 
 
-  const plan = planner.planNext(blocks, m, { bucket: bucketNow, bucketBlocks });
+  const intensity = localStorage.getItem("ftf_intensity") || "Balanced";
+
+  // Count today's completed blocks for fatigue curve
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const blocksToday = blocks.filter((b) => {
+    const t = Date.parse((b.timestamp || "").replace(" ", "T"));
+    return !Number.isNaN(t) && t >= dayStart;
+  }).length;
+
+  const plan = planner.planNext(blocks, m, { bucket: bucketNow, bucketBlocks, intensity, blocksToday });
 
   // Manual goal override (debug)
   if (cfg.debug.goal_override_enabled) {
@@ -246,21 +473,109 @@ function todayStats() {
   });
 
   const vals = todays.map((b) => Number(b.focus_seconds)).filter((x) => x > 0);
-  if (!vals.length) return { count: 0, best: null, avg: null };
+  if (!vals.length) return { count: 0, best: null, avg: null, total: 0 };
 
   return {
     count: vals.length,
     best: Math.max(...vals),
     avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
+    total: Math.round(vals.reduce((a, b) => a + b, 0)),
   };
 }
 
+function computeWinRate(n = 10) {
+  const recent = blocks.filter(b => b?.goal_seconds > 0).slice(-n);
+  if (!recent.length) return null;
+  const wins = recent.filter(b => b.focus_seconds >= b.goal_seconds).length;
+  return Math.round((wins / recent.length) * 100);
+}
+
+function currentStreak() {
+  let streak = 0;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i]?.is_win) streak++; else break;
+  }
+  return streak;
+}
 
 function ensureCached() {
   if (!cached.plan || !cached.m) {
     cached = planNow(); // compute once
   }
   return cached;
+}
+
+function syncTodayCard() {
+  const s = todayStats();
+  const { m, plan } = ensureCached();
+  const streak = currentStreak();
+  const winRate = computeWinRate(10);
+
+  $("todayCount").textContent = String(s.count || 0);
+  $("statStreak").textContent = streak > 0 ? `${streak} 🔥` : "0";
+  $("statFloor").textContent = plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--";
+  $("todayGoal").textContent = fmtHHMMSS(plan.goal_sec || 0);
+
+  // Context line beneath stats
+  const ctx = $("statsContext");
+  if (ctx) {
+    const parts = [];
+
+    // Weekly floor delta
+    const floorDelta = computeWeeklyFloorDelta();
+    if (floorDelta != null) {
+      if (floorDelta > 0) parts.push(`Floor this week: +${fmtMin(floorDelta)}`);
+      else if (floorDelta < -30) parts.push(`Floor this week: ${fmtMin(floorDelta)}`);
+      else parts.push("Floor: steady");
+    }
+
+    // Momentum indicator
+    if (plan.momLevel) {
+      const momLabel = plan.momLevel === "HIGH" ? "🔥 Hot" : plan.momLevel === "LOW" ? "🌊 Recovery" : "⚡ Steady";
+      parts.push(momLabel);
+    }
+
+    // Fatigue note
+    if (plan.fatigue_factor && plan.fatigue_factor < 0.95) {
+      parts.push(`Fatigue: ${Math.round(plan.fatigue_factor * 100)}%`);
+    }
+
+    if (winRate != null) parts.push(`Win: ${winRate}%`);
+    if (s.total > 0) parts.push(`Total: ${fmtHHMMSS(s.total)}`);
+
+    ctx.textContent = parts.join("  ·  ");
+  }
+
+  // Render milestone trophies
+  try { renderMilestones(); } catch {}
+}
+
+/** Compute floor change over last 7 days. */
+function computeWeeklyFloorDelta() {
+  if (blocks.length < 5) return null;
+  const now = Date.now();
+  const weekAgo = now - 7 * 86400000;
+
+  // Current floor = plan.floor_sec
+  const { plan } = ensureCached();
+  const currentFloor = plan.floor_sec;
+  if (!currentFloor || currentFloor <= 0) return null;
+
+  // Floor 7 days ago: P35 of blocks that existed before the cutoff
+  const oldBlocks = blocks.filter(b => {
+    const t = Date.parse((b.timestamp || "").replace(" ", "T"));
+    return !Number.isNaN(t) && t < weekAgo;
+  });
+  if (oldBlocks.length < 3) return null;
+
+  const vals = oldBlocks.map(b => Number(b.focus_seconds)).filter(x => x > 0).sort((a,b) => a - b);
+  if (vals.length < 3) return null;
+
+  const idx = 0.35 * (vals.length - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  const oldFloor = (lo === hi) ? vals[lo] : vals[lo] + (vals[hi] - vals[lo]) * (idx - lo);
+
+  return Math.round(currentFloor - oldFloor);
 }
 
 function prettyPhase(p) {
@@ -274,7 +589,7 @@ function prettyPhase(p) {
 function friendlyBlockType(bt) {
   if (!bt) return "";
   if (bt === "CONSOLIDATE") return "Consolidation";
-  if (bt === "PUSH_A" || bt === "PUSH_B") return "Stretch";
+  if (bt === "PUSH" || bt === "PUSH_A" || bt === "PUSH_B") return "Push";
   if (bt === "RAISE_FLOOR") return "Floor raise";
   return bt;
 }
@@ -282,7 +597,7 @@ function friendlyBlockType(bt) {
 function statusMessage(plan, m, blockCount) {
   // First-run
   if (blockCount === 0) {
-    return { text: "Press Start Focus and concentrate until you can't. The app will learn your rhythm.", tone: "" };
+    return { text: "Press Focus and concentrate until you can't. The app will learn your rhythm.", tone: "" };
   }
 
   // During calibration (< 3 blocks)
@@ -309,92 +624,117 @@ function statusMessage(plan, m, blockCount) {
     if (plan.debug?.mode === "WAVE_EASY") {
       return { text: "Recovery block — easy target to stabilize after a tough stretch.", tone: "warn" };
     }
-    if (bt === "PUSH_A" || bt === "PUSH_B") {
-      return { text: `Stretch block — aim for ${fmtHHMMSS(plan.push_target || plan.goal_sec)}. It's okay to fall short.`, tone: "" };
+    if (bt === "PUSH" || bt === "PUSH_A" || bt === "PUSH_B") {
+      const momLabel = plan.momLevel === "HIGH" ? "You're on fire — " : plan.momLevel === "LOW" ? "Gentle push — " : "";
+      return { text: `${momLabel}Push block — aim for ${fmtHHMMSS(plan.push_target || plan.goal_sec)}. It's okay to fall short.`, tone: "" };
     }
-    return { text: "Consolidation — land inside your comfort zone to build your streak.", tone: "calm" };
+    // Fatigue note for late-day blocks
+    if (plan.blocks_today >= 3 && plan.fatigue_factor < 0.90) {
+      return { text: `Consolidation — goal adjusted for fatigue (block ${plan.blocks_today + 1} today).`, tone: "calm" };
+    }
+    return { text: "Consolidation — land this and keep your momentum going.", tone: "calm" };
   }
 
   return { text: "Ready when you are.", tone: "calm" };
 }
 
 // ════════════════════════════════════════════════
-// Sync UI
+// Sync UI — compute/render split
 // ════════════════════════════════════════════════
 
-function syncTodayCard() {
-  const s = todayStats();
-  $("todayCount").textContent = String(s.count || 0);
-  $("todayBest").textContent = s.best == null ? "--" : fmtHHMMSS(s.best);
+/** Pure: derive all display values from current state. No DOM access. */
+function computeHeaderState() {
   const { m, plan } = ensureCached();
-  $("statFloor").textContent = plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--";
-  $("todayGoal").textContent = fmtHHMMSS(plan.goal_sec || 0);
-}
-
-function syncHeader() {
-  const { m, plan } = ensureCached();
-
-  // Mode badge
-  const modeEl = $("modeLabel");
-  modeEl.textContent = mode;
-  modeEl.setAttribute("data-mode", mode);
-  document.body.setAttribute("data-mode", mode);
-
-  // Goal hit visual feedback
-  document.body.classList.toggle("goal-hit", goalHitDuringFocus && mode === "FOCUS");
-
-  $("timerLabel").textContent = fmtHHMMSS(elapsed);
-  $("targetsLabel").textContent = `Goal: ${fmtHHMMSS(plan.goal_sec || 0)}`;
-
-  // Phase badge: show phase + block type
+  const timerActive = startTS != null;
+  const focusStarted = mode === "FOCUS" && timerActive;
+  const goalHit = goalHitDuringFocus && mode === "FOCUS";
   const phaseTxt = prettyPhase(plan.phase);
   const btTxt = friendlyBlockType(plan.block_type);
-  $("phaseLabel").textContent = btTxt ? `${phaseTxt} · ${btTxt}` : phaseTxt;
-
-  // Metrics line
   const adv = document.body.classList.contains("advanced");
-  const metricsEl = $("metricsLabel");
-  if (metricsEl) {
+
+  let metricsText = "";
+  let metricsVisible = false;
+  if (m.floor != null || plan.floor_sec > 0) {
+    metricsVisible = true;
     if (!adv) {
       const f = plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--";
       const med = m.median == null ? "--" : fmtMin(m.median);
-      metricsEl.textContent = `Floor: ${f} · Typical: ${med}`;
+      metricsText = `Floor: ${f} · Typical: ${med}`;
     } else {
-      metricsEl.textContent =
+      metricsText =
         `F/M/C: ${fmtMin(m.floor)} / ${fmtMin(m.median)} / ${fmtMin(m.ceiling)} | ` +
         `IQR: ${fmtMin(m.recent_iqr)} | Crashes: ${m.recent_crashes}/${Math.max(1, m.recent_n)}`;
     }
-    metricsEl.style.display = (m.floor != null || plan.floor_sec > 0) ? "" : "none";
   }
 
-  // Button states
-  const timerActive = startTS != null;
-  const focusStarted = mode === "FOCUS" && timerActive;
-  $("pauseBtn").disabled = !timerActive;
-  $("distractedBtn").disabled = !focusStarted;
-  $("endBreakBtn").disabled = !(mode === "BREAK" && timerActive);
+  let idleStatus = null;
+  if (!timerActive) {
+    idleStatus = statusMessage(plan, m, blocks.length);
+  }
+
+  // Debug text
+  const dbg = plan.debug || {};
+  const debugLines = Object.entries(dbg).map(([k, v]) => {
+    const vv = typeof v === "number" ? Math.round(v * 1000) / 1000 : v;
+    return `${k}: ${vv}`;
+  });
+  debugLines.push(`goal_sec: ${plan.goal_sec}`, `min_goal_sec: ${plan.min_goal_sec}`, `floor_sec: ${plan.floor_sec}`);
+  debugLines.push(`phase: ${plan.phase}`, `block_type: ${plan.block_type}`, `push_target: ${plan.push_target}`);
+
+  // UI state for button groups
+  let uiState = "idle";
+  if (mode === "BREAK" && timerActive) uiState = "break";
+  else if (mode === "FOCUS" && timerActive && running) uiState = "focusing";
+  else if (mode === "FOCUS" && timerActive && !running) uiState = "paused";
+
+  return {
+    mode, elapsed, goalHit, timerActive, focusStarted, uiState,
+    timerText: fmtHHMMSS(elapsed),
+    goalText: plan.fatigue_factor && plan.fatigue_factor < 0.95
+      ? `Goal: ${fmtHHMMSS(plan.goal_sec || 0)} (${Math.round(plan.fatigue_factor * 100)}%)`
+      : `Goal: ${fmtHHMMSS(plan.goal_sec || 0)}`,
+    phaseText: btTxt ? `${phaseTxt} · ${btTxt}` : phaseTxt,
+    zenText: goalHit ? "Goal reached ✓" : "Focusing…",
+    metricsText, metricsVisible,
+    idleStatus,
+    debugText: debugLines.join("\n"),
+  };
+}
+
+/** Render computed header state to the DOM. */
+function renderHeader(h) {
+  const modeEl = $("modeLabel");
+  modeEl.textContent = h.mode;
+  modeEl.setAttribute("data-mode", h.mode);
+  document.body.setAttribute("data-mode", h.mode);
+  document.body.setAttribute("data-ui", h.uiState);
+
+  document.body.classList.toggle("goal-hit", h.goalHit);
+
+  const zenEl = $("zenIndicator");
+  if (zenEl) zenEl.textContent = h.zenText;
+
+  $("timerLabel").textContent = h.timerText;
+  $("targetsLabel").textContent = h.goalText;
+  $("phaseLabel").textContent = h.phaseText;
+
+  const metricsEl = $("metricsLabel");
+  if (metricsEl) {
+    metricsEl.textContent = h.metricsText;
+    metricsEl.style.display = h.metricsVisible ? "" : "none";
+  }
 
   try { syncTodayCard(); } catch {}
 
-  // Status bar — only update when timer is NOT running (avoid overwriting focus/break messages)
-  if (startTS == null) {
-    const sm = statusMessage(plan, m, blocks.length);
-    const el = $("statusLabel");
-    el.textContent = sm.text;
-    el.className = "status-bar" + (sm.tone ? ` status-${sm.tone}` : "");
+  if (h.idleStatus) {
+    setStatus(h.idleStatus.text, h.idleStatus.tone);
   }
 
-  // Debug panel
-  try {
-    const dbg = plan.debug || {};
-    const lines = Object.entries(dbg).map(([k, v]) => {
-      const vv = typeof v === "number" ? Math.round(v * 1000) / 1000 : v;
-      return `${k}: ${vv}`;
-    });
-    lines.push(`goal_sec: ${plan.goal_sec}`, `min_goal_sec: ${plan.min_goal_sec}`, `floor_sec: ${plan.floor_sec}`);
-    lines.push(`phase: ${plan.phase}`, `block_type: ${plan.block_type}`, `push_target: ${plan.push_target}`);
-    $("debugText").textContent = lines.join("\n");
-  } catch {}
+  try { $("debugText").textContent = h.debugText; } catch {}
+}
+
+function syncHeader() {
+  renderHeader(computeHeaderState());
 }
 
 // ════════════════════════════════════════════════
@@ -428,10 +768,13 @@ function redrawCharts() {
       chart = drawProgress(ctx, blocks, maxN);
     } else if (activeTab === "today") {
       chart = drawToday(ctx, blocks);
-    } else if (activeTab === "buckets") {
-      chart = drawBuckets(ctx, blocks);
+    } else if (activeTab === "weekly") {
+      chart = drawWeekly(ctx, blocks);
     } else if (activeTab === "consistency") {
       chart = drawConsistency(ctx, blocks);
+    } else if (activeTab === "distribution") {
+      const { plan } = ensureCached();
+      chart = drawDistribution(ctx, blocks, plan);
     }
 
     // Show empty state if no data for this tab
@@ -452,19 +795,22 @@ function yesNo(v) { return v ? "Yes" : "No"; }
 
 function rowHTML(b) {
   const focus = fmtHHMMSS(Number(b.focus_seconds || 0));
+  const goal  = fmtHHMMSS(Number(b.goal_seconds || 0));
   const brk   = fmtHHMMSS(Number(b.break_seconds || 0));
   const tl    = fmtHHMMSS(Number(b.target_low_seconds || 0));
   const th    = fmtHHMMSS(Number(b.target_high_seconds || 0));
   const push  = b.push_target_seconds ? fmtHHMMSS(Number(b.push_target_seconds)) : "--";
+  const pauses = b.pause_count > 0 ? `${b.pause_count}` : "--";
   return `<tr>
     <td>${escHTML(b.idx)}</td>
     <td>${escHTML(b.phase || "--")}</td>
     <td>${escHTML(b.block_type || "--")}</td>
-    <td>${focus}</td><td>${brk}</td>
+    <td>${focus}</td><td>${goal}</td><td>${brk}</td>
     <td>${tl}</td><td>${th}</td><td>${push}</td>
     <td>${yesNo(b.crash)}</td>
     <td>${b.overshoot ? fmtHHMMSS(Number(b.overshoot)) : "--"}</td>
     <td>${escHTML(b.stop_reason || "--")}</td>
+    <td>${pauses}</td>
     <td>${escHTML(b.bucket || "--")}</td>
     <td>${escHTML(b.timestamp || "--")}</td>
   </tr>`;
@@ -494,6 +840,11 @@ function tick() {
       goalHitAt = elapsed;
       syncHeader(); // update visual state immediately
     }
+    // Auto-save inflight session periodically
+    if (now - lastAutoSave > AUTOSAVE_INTERVAL_MS) {
+      lastAutoSave = now;
+      saveInflightSession();
+    }
   } else {
     const rem = breakTotal - Math.floor((now - startTS) / 1000);
     elapsed = Math.max(0, rem);
@@ -510,12 +861,15 @@ function startFocus() {
   running = true;
   startTS = performance.now();
   elapsed = 0;
+  lastAutoSave = performance.now();
   goalHitDuringFocus = false;
   goalHitAt = null;
-  $("pauseBtn").textContent = "Pause";
-  $("statusLabel").textContent = "Focus running — stay with it until you can't.";
-  $("statusLabel").className = "status-bar";
+  pauseCount = 0;
+  pauseTotal = 0;
+  pauseStartedAt = null;
+  setStatus("Focus running — stay with it until you can't.", "");
   syncHeader();
+  saveInflightSession(); // immediate first save
   tickHandle = setInterval(tick, 250);
 }
 
@@ -526,9 +880,7 @@ function startBreak(seconds) {
   breakTotal = Math.floor(seconds);
   elapsed = breakTotal;
   startTS = performance.now();
-  $("pauseBtn").textContent = "Pause";
-  $("statusLabel").textContent = "Break — rest your eyes and move around.";
-  $("statusLabel").className = "status-bar status-calm";
+  setStatus("Break — rest your eyes and move around.", "calm");
   syncHeader();
   tickHandle = setInterval(tick, 250);
 }
@@ -540,21 +892,41 @@ async function finalizeFocus(stopReason) {
 
   cancelTick();
   running = false;
+  clearInflightSession();
 
-  const { m, plan } = ensureCached();
+  // Use the plan/metrics from when focus started — not a stale cache from mid-session
+  const { m, plan } = (focusStartSnapshot.plan) ? focusStartSnapshot : ensureCached();
   const crash = m.crash_threshold != null && focusSeconds < m.crash_threshold;
   const overshoot = m.overshoot_threshold != null && focusSeconds > m.overshoot_threshold;
-  const isPush = plan.block_type === BlockType.PUSH_A || plan.block_type === BlockType.PUSH_B;
+  const isPush = plan.block_type === "PUSH" || plan.block_type === "PUSH_A" || plan.block_type === "PUSH_B";
   const pushTarget = isPush ? plan.push_target : 0;
-  const pushHit = isPush ? focusSeconds >= pushTarget : false;
+  // Broadened success: 90% of push target counts as a hit
+  const pushHit = isPush ? focusSeconds >= (pushTarget * 0.90) : false;
   const breakSeconds = computeBreakSeconds(focusSeconds, crash, overshoot, isPush);
   const goalSec = Number(plan.goal_sec || 0);
   const isWin = goalSec > 0 && focusSeconds >= goalSec;
 
   const idx = blocks.length ? Math.max(...blocks.map((b) => b.idx)) + 1 : 1;
+
+  // Compute streak before pushing this block
+  let streak = 0;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i]?.is_win) streak++; else break;
+  }
+  if (isWin) streak++;
+
+  // Count today's blocks for fatigue/crash context
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayBlockCount = blocks.filter((b) => {
+    const t = Date.parse((b.timestamp || "").replace(" ", "T"));
+    return !Number.isNaN(t) && t >= dayStart;
+  }).length;
+
   const block = {
     idx,
     goal_seconds: goalSec,
+    raw_goal_seconds: plan.raw_goal_sec || goalSec,
     min_goal_seconds: plan.min_goal_sec || 0,
     floor_seconds: plan.floor_sec || 0,
     floor_global_seconds: m.floor_global || null,
@@ -573,7 +945,12 @@ async function finalizeFocus(stopReason) {
     is_win: isWin,
     break_seconds: breakSeconds,
     timestamp: nowTimestamp(),
-    bucket: bucketForDate(new Date()),
+    bucket: bucketForDate(now),
+    // Enriched time fields
+    hour: now.getHours(),
+    day_of_week: now.getDay(),
+    date: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`,
+    // Phase & planning
     phase: plan.phase,
     block_type: plan.block_type,
     target_low_seconds: plan.target_low,
@@ -585,17 +962,55 @@ async function finalizeFocus(stopReason) {
     stop_reason: stopReason,
     wave_cycle_id: plan.wave_cycle_id || 0,
     wave_cycle_pos: plan.wave_cycle_pos || 0,
+    // Session quality
+    goal_hit_at_seconds: goalHitAt,
+    pause_count: pauseCount,
+    pause_total_seconds: pauseTotal,
+    // Thresholds for retrospective analysis
+    crash_threshold_seconds: m.crash_threshold || null,
+    overshoot_threshold_seconds: m.overshoot_threshold || null,
+    // Context
+    win_streak: streak,
+    blocks_today: todayBlockCount,
+    fatigue_factor: plan.fatigue_factor || 1,
+    momentum_rate: plan.momentum?.rate || null,
+    momentum_level: plan.momLevel || null,
   };
 
   blocks.push(block);
   await putBlock(block);
   planner.updateAfterBlock(block);
+  invalidateCache(); // Force fresh plan for next syncHeader
 
   renderTable();
   redrawCharts();
   syncHeader();
 
-  if (isWin) showWinModal(focusSeconds, goalSec);
+  // ── Celebrations ──
+  const freshPlan = ensureCached().plan;
+
+  // Floor milestone
+  if (freshPlan.new_milestone) {
+    showMilestoneModal(freshPlan.new_milestone);
+  } else if (isWin) {
+    showWinModal(focusSeconds, goalSec);
+  }
+
+  // Check for perfect day (all blocks today hit their goals)
+  const todaysBlocks = blocks.filter((b) => {
+    const t = Date.parse((b.timestamp || "").replace(" ", "T"));
+    return !Number.isNaN(t) && t >= dayStart;
+  });
+  if (todaysBlocks.length >= 3 && todaysBlocks.every(b => b.is_win)) {
+    setTimeout(() => setStatus("⭐ Perfect day — every session hit its goal!", "good"), 1500);
+  }
+
+  // Daily total milestones
+  const totalFocusToday = todaysBlocks.reduce((s, b) => s + Number(b.focus_seconds || 0), 0);
+  const hours = Math.floor(totalFocusToday / 3600);
+  if (hours >= 1 && totalFocusToday - focusSeconds < hours * 3600) {
+    setTimeout(() => setStatus(`${hours}hr+ of focus today!`, "good"), 2000);
+  }
 
   startBreak(breakSeconds);
 }
@@ -612,8 +1027,7 @@ function endBreakEarly() {
   if (cfg.breaks.auto_start_next_focus) {
     startFocus();
   } else {
-    $("statusLabel").textContent = "Break ended early. Ready when you are.";
-    $("statusLabel").className = "status-bar status-calm";
+    setStatus("Break ended early. Ready when you are.", "calm");
   }
 }
 
@@ -622,13 +1036,13 @@ function finishBreak() {
   running = false;
   startTS = null;
   elapsed = 0;
+  mode = "FOCUS";
   syncHeader();
 
   if (cfg.breaks.auto_start_next_focus) {
     setTimeout(startFocus, 300);
   } else {
-    $("statusLabel").textContent = "Break's over. Ready for the next one?";
-    $("statusLabel").className = "status-bar status-calm";
+    setStatus("Break's over. Ready for the next one?", "calm");
   }
 }
 
@@ -637,19 +1051,27 @@ function togglePause() {
   if (running) {
     running = false;
     cancelTick();
-    $("pauseBtn").textContent = "Resume";
-    $("statusLabel").textContent = "Paused — press Resume or Space to continue.";
-    $("statusLabel").className = "status-bar status-warn";
+    if (mode === "FOCUS") {
+      pauseCount++;
+      pauseStartedAt = performance.now();
+      saveInflightSession(); // save on pause so power loss is covered
+    }
+    setStatus("Paused — press Resume or Space to continue.", "warn");
   } else {
     running = true;
     if (mode === "FOCUS") {
+      // Track total pause duration
+      if (pauseStartedAt != null) {
+        pauseTotal += Math.floor((performance.now() - pauseStartedAt) / 1000);
+        pauseStartedAt = null;
+      }
       startTS = performance.now() - elapsed * 1000;
     } else {
       startTS = performance.now() - Math.max(0, breakTotal - elapsed) * 1000;
     }
-    $("pauseBtn").textContent = "Pause";
     tickHandle = setInterval(tick, 250);
   }
+  syncHeader(); // update UI state immediately
 }
 
 function resetTimer() {
@@ -660,9 +1082,12 @@ function resetTimer() {
   mode = "FOCUS";
   goalHitDuringFocus = false;
   goalHitAt = null;
-  $("pauseBtn").textContent = "Pause";
-  $("statusLabel").textContent = "Timer reset. Ready when you are.";
-  $("statusLabel").className = "status-bar status-calm";
+  pauseCount = 0;
+  pauseTotal = 0;
+  pauseStartedAt = null;
+  clearInflightSession();
+  setStatus("Timer reset. Ready when you are.", "calm");
+  invalidateCache();
   syncHeader();
 }
 
@@ -751,11 +1176,44 @@ function showWinModal(focusSec, goalSec) {
 function hideWinModal() {
   const panel = $("winModal");
   if (panel) panel.classList.add("hidden");
+  const panel2 = $("milestoneModal");
+  if (panel2) panel2.classList.add("hidden");
   const c = $("confettiCanvas");
   if (c) {
     const ctx = c.getContext("2d");
     ctx?.clearRect(0, 0, c.width, c.height);
   }
+}
+
+function showMilestoneModal(minutes) {
+  const panel = $("milestoneModal");
+  if (!panel) { showWinModal(minutes * 60, 0); return; }
+
+  const label = minutes >= 60 ? `${minutes / 60}hr` : `${minutes}min`;
+  if ($("milestoneEmoji")) $("milestoneEmoji").textContent = "🏆";
+  if ($("milestoneTitle")) $("milestoneTitle").textContent = `Floor milestone: ${label}!`;
+  if ($("milestoneText")) $("milestoneText").textContent = `Your consistent floor has reached ${label}. This is real, earned growth.`;
+
+  // Update trophy row
+  renderMilestones();
+
+  panel.classList.remove("hidden");
+  runConfetti();
+  $("milestoneOk")?.focus();
+}
+
+function renderMilestones() {
+  const row = $("trophyRow");
+  if (!row) return;
+  const { plan } = ensureCached();
+  const earned = plan.earned_milestones || [];
+  const all = cfg.wave.floor_milestones || [15,20,25,30,40,50,60,75,90,120];
+  row.innerHTML = all.map(ms => {
+    const got = earned.includes(ms);
+    const label = ms >= 60 ? `${ms/60}hr` : `${ms}m`;
+    return `<span class="trophy ${got ? "earned" : "locked"}" title="${label} floor">${got ? "🏆" : "🔒"}<span class="trophy-label">${label}</span></span>`;
+  }).join("");
+  row.style.display = earned.length > 0 ? "" : "none";
 }
 
 // ════════════════════════════════════════════════
@@ -834,11 +1292,12 @@ async function importJSONLText(text) {
 
   planner = new WavePlanner(cfg);
   for (const b of blocks) planner.updateAfterBlock(b);
+  invalidateCache();
 
   renderTable();
   redrawCharts();
   syncHeader();
-  $("statusLabel").textContent = `Imported ${imported.length} blocks.`;
+  setStatus(`Imported ${imported.length} blocks.`, "good");
 }
 
 async function clearAllData() {
@@ -849,7 +1308,8 @@ async function clearAllData() {
   renderTable();
   redrawCharts();
   syncHeader();
-  $("statusLabel").textContent = "Cleared all history.";
+  invalidateCache();
+  setStatus("Cleared all history.", "calm");
 }
 
 function resetSettingsToDefault() {
@@ -862,12 +1322,13 @@ function resetSettingsToDefault() {
   setSettingsControlsFromCfg();
   applyUIScale();
   syncHeader();
-  $("statusLabel").textContent = "Settings reset to default.";
+  setStatus("Settings reset to default.", "calm");
 }
 
 function exportSettings() {
   const settingsExport = {
     _type: "ftf_settings_v1",
+    _version: VERSION,
     _exported: nowTimestamp(),
     config: cfg,
     intensity: localStorage.getItem("ftf_intensity") || "Balanced",
@@ -877,7 +1338,7 @@ function exportSettings() {
     `ftf_settings_${Date.now()}.json`,
     JSON.stringify(settingsExport, null, 2)
   );
-  $("statusLabel").textContent = "Settings exported.";
+  setStatus("Settings exported.", "calm");
 }
 
 async function exportBackupFile(){
@@ -885,11 +1346,12 @@ async function exportBackupFile(){
     const payload = await exportBackup();
     const out = {
       _type: "ftf_backup_v1",
+      _version: VERSION,
       _exported: nowTimestamp(),
       ...payload
     };
     downloadText(`ftf_backup_${Date.now()}.json`, JSON.stringify(out, null, 2));
-    $("statusLabel").textContent = "Backup exported.";
+    setStatus("Backup exported.", "calm");
   } catch (e){
     console.error(e);
     alert("Failed to export backup. See console for details.");
@@ -931,7 +1393,7 @@ async function importSettings(file) {
     const data = JSON.parse(text);
 
     if (!data.config) {
-      $("statusLabel").textContent = "Invalid settings file — no config found.";
+      setStatus("Invalid settings file — no config found.", "warn");
       return;
     }
 
@@ -950,14 +1412,15 @@ async function importSettings(file) {
 
     planner = new WavePlanner(cfg);
     for (const b of blocks) planner.updateAfterBlock(b);
+    invalidateCache();
 
     setSettingsControlsFromCfg();
     applyUIScale();
     syncHeader();
-    $("statusLabel").textContent = "Settings imported successfully.";
+    setStatus("Settings imported successfully.", "good");
   } catch (e) {
     console.warn("Settings import failed", e);
-    $("statusLabel").textContent = "Failed to import settings — invalid file.";
+    setStatus("Failed to import settings — invalid file.", "warn");
   }
 }
 
@@ -968,9 +1431,19 @@ async function importSettings(file) {
 function wireMainButtons() {
   $("startFocusBtn").addEventListener("click", startFocus);
   $("pauseBtn").addEventListener("click", togglePause);
+  $("resumeBtn")?.addEventListener("click", togglePause);
   $("endBreakBtn").addEventListener("click", endBreakEarly);
   $("distractedBtn").addEventListener("click", () => finalizeFocus("DISTRACTED"));
-  $("resetBtn").addEventListener("click", resetTimer);
+  $("distractedBtnP")?.addEventListener("click", () => finalizeFocus("DISTRACTED"));
+  $("doneBtn")?.addEventListener("click", () => finalizeFocus("COMPLETED"));
+  $("doneBtnP")?.addEventListener("click", () => finalizeFocus("COMPLETED"));
+
+  // Set initial UI state
+  document.body.setAttribute("data-ui", "idle");
+
+  // Zen mode toggle
+  $("zenToggleBtn")?.addEventListener("click", toggleZen);
+  applyZenMode();
 
   $("openSettingsBtn").addEventListener("click", openSettings);
   $("closeSettingsBtn").addEventListener("click", closeSettings);
@@ -983,6 +1456,7 @@ function wireMainButtons() {
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (!$("milestoneModal")?.classList.contains("hidden")) { hideWinModal(); return; }
       if (!$("winModal")?.classList.contains("hidden")) { hideWinModal(); return; }
       if (!$("settingsModal")?.classList.contains("hidden")) { closeSettings(); return; }
     }
@@ -1082,19 +1556,16 @@ function wireSettings() {
 
   // Wave settings
   $("waveVisibility").addEventListener("change", () => { cfg.wave.wave_visibility = $("waveVisibility").value; persistConfig(); syncHeader(); });
-  $("floorIncSec").addEventListener("change", () => { cfg.wave.floor_raise_increment_seconds = Number($("floorIncSec").value); persistConfig(); });
-  $("floorStreak").addEventListener("change", () => { cfg.wave.floor_raise_clean_streak = Number($("floorStreak").value); persistConfig(); });
 
-  $("pushA").addEventListener("input", () => {
-    cfg.wave.push_a_pct_of_median = Number($("pushA").value);
-    $("pushAVal").textContent = `${Math.round(cfg.wave.push_a_pct_of_median * 100)}%`;
-    persistConfig();
-  });
-  $("pushB").addEventListener("input", () => {
-    cfg.wave.push_b_pct_of_median = Number($("pushB").value);
-    $("pushBVal").textContent = `${Math.round(cfg.wave.push_b_pct_of_median * 100)}%`;
-    persistConfig();
-  });
+  if ($("fatigueRate")) {
+    $("fatigueRate").addEventListener("input", () => {
+      cfg.wave.fatigue_rate_per_block = Number($("fatigueRate").value);
+      $("fatigueRateVal").textContent = `${Math.round(cfg.wave.fatigue_rate_per_block * 100)}%`;
+      persistConfig();
+      invalidateCache();
+      syncHeader();
+    });
+  }
 
   // UI scale
   $("uiScale").addEventListener("input", () => {
@@ -1178,6 +1649,24 @@ async function init() {
   if (blocks.length > 0) {
     document.body.classList.remove("stats-hidden");
   }
+
+  // Version display
+  const vEl = $("versionLabel");
+  if (vEl) vEl.textContent = `v${VERSION}`;
+  console.log(`Focus to Failure v${VERSION}`);
+
+  // Check for interrupted session (power loss, tab crash)
+  const staleSession = getInflightSession();
+  if (staleSession) {
+    const mins = Math.floor(staleSession.elapsed / 60);
+    const secs = staleSession.elapsed % 60;
+    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    if (confirm(`You were focusing for ${timeStr} when the session was interrupted.\n\nRecord this block?`)) {
+      await recoverSession(staleSession);
+    } else {
+      clearInflightSession();
+    }
+  }
 }
 
 if (window.__FTF_TEST__) {
@@ -1197,4 +1686,17 @@ if (window.__FTF_TEST__) {
   };
 }
 
-init();
+init().catch((err) => {
+  console.error("Focus to Failure: init failed", err);
+  document.body.innerHTML = `
+    <div style="max-width:420px;margin:60px auto;padding:24px;font-family:system-ui;text-align:center">
+      <h2 style="color:#dc2626">Something went wrong</h2>
+      <p style="color:#6b6b6b;font-size:14px">The app couldn't start. This is usually caused by corrupted local data.</p>
+      <p style="color:#6b6b6b;font-size:13px;word-break:break-all">${String(err?.message || err)}</p>
+      <button onclick="localStorage.clear();indexedDB.deleteDatabase('FocusToFailureDB');location.reload()"
+        style="margin-top:16px;padding:10px 24px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer">
+        Reset App &amp; Reload
+      </button>
+      <p style="color:#999;font-size:11px;margin-top:12px">This clears all local data. Export a backup first if possible.</p>
+    </div>`;
+});

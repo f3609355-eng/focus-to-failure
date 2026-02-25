@@ -19,10 +19,7 @@ export const DEFAULT_CONFIG = {
   },
 
   analytics: {
-    tau_blocks: 21,
-    outlier_power: 2.0,
-    outlier_epsilon: 1e-6,
-    floor_percentile: 0.25,
+    floor_percentile: 0.35,
     median_percentile: 0.50,
     ceiling_percentile: 0.80,
     iqr_low_percentile: 0.25,
@@ -39,6 +36,7 @@ export const DEFAULT_CONFIG = {
     drop_to_stability_if_recent_iqr_widens_pct: 0.35,
     bucket_min_n: 3,
     bucket_full_n: 9,
+    bucket_recency_days: 30,
     metrics_window_n: 21,
   },
   wave: {
@@ -50,21 +48,43 @@ export const DEFAULT_CONFIG = {
     adaptive_min_ratio: 0.90,
     start_goal_band_low_minutes: 20,
     start_goal_band_high_minutes: 30,
-    floor_raise_clean_streak: 5,
-    floor_raise_increment_seconds: 45,
-    push_a_pct_of_median: 0.10,
-    push_b_pct_of_median: 0.07,
-    target_band_add_minutes_stability: 4,
+    // Push (single type, intensity scales with momentum)
+    push_pct_high: 0.12,
+    push_pct_mid: 0.08,
+    push_pct_low: 0.05,
+    consolidate_band_add_minutes: 4,
     target_band_add_minutes_wave: 6,
     push_cap_add_minutes: 10,
-    forced_easy_consolidate_blocks_after_crash: 2,
-    easy_consolidate_band_add_minutes: 4,
+    easy_band_add_minutes: 4,
     wave_visibility: "Subtle",
     trend_points: 30,
-  },
-  ux: {
-    prompt_on_target_reached: true,
-    auto_stop_at_target_high: false,
+    // Fatigue curve
+    fatigue_rate_per_block: 0.06,
+    fatigue_floor: 0.75,
+    // Momentum thresholds (rolling win rate over last 5)
+    momentum_window: 5,
+    momentum_high_threshold: 0.80,
+    momentum_low_threshold: 0.40,
+    // Crash recovery
+    forced_easy_mild_crash: 1,
+    forced_easy_hard_crash: 2,
+    hard_crash_fraction: 0.80,
+    // Plateau detection
+    plateau_eval_blocks: 10,
+    plateau_fail_ge: 4,
+    plateau_flat_improve_pct: 0.01,
+    plateau_volatility_up_pct: 0.15,
+    // Linear progression
+    linear_window_blocks: 5,
+    linear_success_needed: 3,
+    linear_bump_tier1_sec: 120,
+    linear_bump_tier2_sec: 60,
+    linear_bump_tier3_sec: 30,
+    linear_bump_tier4_sec: 15,
+    // Training strategy
+    training_strategy: "LINEAR_THEN_WAVE",
+    // Floor milestones (minutes)
+    floor_milestones: [15, 20, 25, 30, 40, 50, 60, 75, 90, 120],
   },
   debug: {
     goal_override_enabled: false,

@@ -169,8 +169,11 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   width: 100%;
   padding: 8px 0 4px;
+  position: relative;
+  min-height: 5.2rem;
 }
 
 .timer {
@@ -210,9 +213,57 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   flex-direction: column;
   gap: 10px;
 }
+
+/* State-based button groups: only the active group shows */
+.ctrl-group { display: none; }
+body[data-ui="idle"] .ctrl-idle { display: block; }
+body[data-ui="focusing"] .ctrl-focusing { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+body[data-ui="paused"] .ctrl-paused { display: block; }
+body[data-ui="break"] .ctrl-break { display: block; }
+
+.ctrl-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+.ctrl-triple {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+.ctrl-pair > .btn,
+.ctrl-triple > .btn {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Large button variant */
+.btn-lg {
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 1rem;
+}
+
+/* Pause as a subtle text link */
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 12px;
+  letter-spacing: 0.02em;
+  transition: color var(--transition);
+}
+.btn-link:hover { color: var(--text); }
+
 .controls-buttons {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .controls-buttons > button {
@@ -274,6 +325,13 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   border-color: rgba(217,119,6,0.2);
 }
 .btn-warn:hover { background: #fde68a; }
+
+.btn-good {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: rgba(22,163,74,0.2);
+}
+.btn-good:hover { background: #bbf7d0; }
 
 .btn-ghost {
   background: transparent;
@@ -381,6 +439,59 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
   font-size: 0.92rem;
+}
+
+.stats-context {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 0 4px 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  min-height: 1.2em;
+}
+
+.version-footer {
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--border);
+  padding: 12px 0 8px;
+  letter-spacing: 0.03em;
+}
+
+/* Trophy row */
+.trophy-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px 10px;
+  flex-wrap: wrap;
+}
+.trophy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 1.1rem;
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+.trophy.locked {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+.trophy-label {
+  font-size: 0.55rem;
+  color: var(--muted);
+  margin-top: -2px;
+}
+
+/* Milestone modal */
+.milestone-card {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 40px rgba(245, 158, 11, 0.15);
+}
+.milestone-emoji {
+  font-size: 3.5rem !important;
 }
 
 /* ── Chart Tabs ── */
@@ -794,12 +905,50 @@ thead th {
 }
 
 /* ════════════════════════════════════
+   ZEN MODE (hide timer during focus)
+   ════════════════════════════════════ */
+
+/* Zen indicator in header */
+.zen-indicator {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  animation: zenPulse 3s ease-in-out infinite;
+}
+
+@keyframes zenPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* When zen mode is active AND focus is running, hide timer visually but keep space */
+body.zen[data-mode="FOCUS"] .timer { visibility: hidden; }
+body.zen[data-mode="FOCUS"] .goal-badge { visibility: hidden; }
+body.zen[data-mode="FOCUS"] .metrics { visibility: hidden; }
+body.zen[data-mode="FOCUS"] .zen-indicator { display: flex; }
+
+/* Goal-hit override in zen: change indicator color */
+body.zen[data-mode="FOCUS"].goal-hit .zen-indicator {
+  color: var(--success);
+  animation: none;
+  opacity: 1;
+}
+
+/* Zen toggle button active state */
+body.zen #zenToggleBtn { color: var(--accent); }
+
+/* ════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════ */
 @media (max-width: 768px) {
   .timer { font-size: 3.4rem; }
-  .controls-buttons { grid-template-columns: repeat(3, 1fr); }
-  .controls-buttons > button { font-size: 0.82rem; padding: 10px 6px; }
+  .header-timer { min-height: 4.2rem; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .header-meta { gap: 5px; }
   .badge { font-size: 0.66rem; padding: 2px 8px; }
@@ -807,8 +956,9 @@ thead th {
 
 @media (max-width: 480px) {
   .timer { font-size: 2.8rem; }
-  .controls-buttons { grid-template-columns: repeat(2, 1fr); }
-  .controls-buttons > button:last-child { grid-column: span 2; }
+  .header-timer { min-height: 3.6rem; }
+  .ctrl-triple { grid-template-columns: 1fr 1fr; }
+  .ctrl-triple > .btn:first-child { grid-column: 1 / -1; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .setting-right { min-width: 10rem; }
   .setting-row input[type="range"] { width: 7rem; }

@@ -100,9 +100,7 @@ function render(){
     const rng = mulberry32(123);
     const F = 30*60, M = 35*60, C = 50*60;
     const minGoalSec = 20*60;
-    const out = computeWaveGoal({ bt: BlockType.PUSH_A, F, M, C, floorBonusSec:0, minGoalSec, intensity:"Balanced", waveCfg: w, rng });
-    const pctBase = (w.push_a_pct_of_median||0.10);
-    const jit = (w.push_jitter_pct||0);
+    const out = computeWaveGoal({ bt: "PUSH", F, M, C, minGoalSec, intensity:"Balanced", waveCfg: w, momentum: { rate: 0.5 }, blocksToday: 0, rng });
     // We can't read pct directly, but we can ensure push target isn't wildly outside cap logic
     ok("Push target bounded (caps apply)", out.pushTarget <= (F + (w.push_cap_add_minutes||12)*60), `push=${fmtSec(out.pushTarget)} cap=${fmtSec(F + (w.push_cap_add_minutes||12)*60)}`);
   }

@@ -1,9 +1,11 @@
 import { clamp } from "../utils.js";
+import { fatigueFactor, pushPctForMomentum } from "./waveEngine.js";
 
 /**
- * Goal Engine
- * - Converts planner context (floor/median/ceiling + mode + block type) into a single displayed goal.
- * - Applies low-friction intensity pick + optional jitter + safety caps.
+ * Goal Engine v2
+ * - Fatigue-adjusted goals (block N of day)
+ * - Single PUSH type with momentum-driven intensity
+ * - No floor bonus (floor = real P35 only)
  */
 
 export function pickGoalFromBand(tl, th, intensity="Balanced"){
@@ -16,7 +18,7 @@ export function jitteredPct(base, jitter, rng=Math.random){
   return clamp(base + j, 0, 0.5);
 }
 
-/** Adaptive minimum: can dip below 25 during calibration, but restores milestone once floor is there. */
+/** Adaptive minimum: can dip below 25 during calibration, restores milestone once floor is there. */
 export function computeAdaptiveMinGoalSec(floorSec, waveCfg){
   const absMin = (waveCfg.absolute_min_minutes ?? 15) * 60;
   const milestone = (waveCfg.milestone_minutes ?? 25) * 60;
@@ -27,22 +29,22 @@ export function computeAdaptiveMinGoalSec(floorSec, waveCfg){
     : Math.max(milestone, Math.round(ratio * floorSec));
 }
 
+// ── Linear Mode ───────────────────────────
+
 export function computeLinearBand(F, M, waveCfg){
   const tl = Math.max(F, (waveCfg.start_goal_minutes||25)*60);
-  const th = Math.max(tl+60, Math.min(M, F + (waveCfg.target_band_add_minutes_stability||10)*60));
+  const th = Math.max(tl+60, Math.min(M, F + (waveCfg.consolidate_band_add_minutes||10)*60));
   return { tl, th };
 }
 
-export function computeLinearGoal({ tl, th, minGoalSec, intensity, linearGoalSec, evalBlocks, tier, waveCfg }){
+export function computeLinearGoal({ tl, th, minGoalSec, intensity, linearGoalSec, evalBlocks, tier, waveCfg, blocksToday }){
   const winN = Math.max(3, Math.floor(waveCfg.linear_window_blocks || 5));
   const win = (evalBlocks||[]).filter(b=>b && b.goal_seconds!=null).slice(-winN);
   const success = win.filter(b=>Number(b.focus_seconds||0) >= Number(b.goal_seconds||0)).length;
 
-  // pick one goal from the band + apply adaptive min
   const bandGoal = pickGoalFromBand(tl, th, intensity);
   let goal = Math.max(minGoalSec, bandGoal);
 
-  // maintain a training goal
   if (linearGoalSec && linearGoalSec > 0){
     goal = Math.max(goal, linearGoalSec);
   }
@@ -57,42 +59,65 @@ export function computeLinearGoal({ tl, th, minGoalSec, intensity, linearGoalSec
     bumped = true;
   }
 
-  return { goalSec: goal, nextLinearGoalSec: goal, winN, success, bumped };
+  // Apply fatigue curve
+  const ff = fatigueFactor(blocksToday || 0, waveCfg);
+  const fatigueGoal = Math.round(goal * ff);
+
+  return { goalSec: Math.max(minGoalSec, fatigueGoal), rawGoalSec: goal, nextLinearGoalSec: goal, winN, success, bumped, fatigueFactor: ff };
 }
+
+// ── Wave Mode ─────────────────────────────
 
 export function computeWaveEasyBand(F, M, waveCfg){
   const tl = Math.max((waveCfg.start_goal_minutes||25)*60, F);
-  const th = Math.max(tl+60, Math.min(M, F + (waveCfg.easy_consolidate_band_add_minutes||6)*60));
+  const th = Math.max(tl+60, Math.min(M, F + (waveCfg.easy_band_add_minutes||6)*60));
   return { tl, th };
 }
 
-export function computeWaveBand(vF, M, waveCfg){
-  const tl = Math.max(10*60, vF);
-  const th = Math.max(tl+60, Math.min(M, vF + (waveCfg.target_band_add_minutes_wave||8)*60));
+export function computeWaveBand(F, M, waveCfg){
+  const tl = Math.max(10*60, F);
+  const th = Math.max(tl+60, Math.min(M, F + (waveCfg.target_band_add_minutes_wave||8)*60));
   return { tl, th };
 }
 
-export function computeWaveGoal({ bt, F, M, C, floorBonusSec, minGoalSec, intensity, waveCfg, rng=Math.random }){
-  const vF = F + (floorBonusSec||0);
-  const { tl, th } = computeWaveBand(vF, M, waveCfg);
+/**
+ * Compute wave goal.
+ * - No floor bonus (F = real floor from P35)
+ * - Push intensity from momentum
+ * - Fatigue-adjusted
+ */
+export function computeWaveGoal({ bt, F, M, C, minGoalSec, intensity, waveCfg, momentum, blocksToday, rng=Math.random }){
+  const { tl, th } = computeWaveBand(F, M, waveCfg);
 
   let pushTarget = 0;
-  if (bt==="PUSH_A"){
-    const pctA = jitteredPct((waveCfg.push_a_pct_of_median||0.10), (waveCfg.push_jitter_pct||0), rng);
-    pushTarget = Math.round(vF * (1.0 + pctA));
-  } else if (bt==="PUSH_B"){
-    const pctB = jitteredPct((waveCfg.push_b_pct_of_median||0.12), (waveCfg.push_jitter_pct||0), rng);
-    pushTarget = Math.round(vF * (1.0 + pctB));
-  }
-
-  if (pushTarget > 0){
+  if (bt === "PUSH") {
+    const pct = jitteredPct(
+      pushPctForMomentum(momentum || { rate: 0.5 }, waveCfg),
+      (waveCfg.push_jitter_pct || 0),
+      rng
+    );
+    pushTarget = Math.round(F * (1.0 + pct));
     pushTarget = Math.min(pushTarget, C);
-    pushTarget = Math.min(pushTarget, vF + (waveCfg.push_cap_add_minutes||12)*60);
+    pushTarget = Math.min(pushTarget, F + (waveCfg.push_cap_add_minutes || 12) * 60);
     pushTarget = Math.max(pushTarget, th + 60);
   }
 
   const baseGoal = Math.max(minGoalSec, pickGoalFromBand(tl, th, intensity));
-  const goal = (pushTarget>0) ? Math.max(baseGoal, pushTarget) : baseGoal;
+  const rawGoal = (pushTarget > 0) ? Math.max(baseGoal, pushTarget) : baseGoal;
 
-  return { vF, tl, th, pushTarget, baseGoal, goalSec: goal };
+  // Apply fatigue curve
+  const ff = fatigueFactor(blocksToday || 0, waveCfg);
+  const fatigueGoal = Math.round(rawGoal * ff);
+  const fatiguePush = pushTarget > 0 ? Math.round(pushTarget * ff) : 0;
+
+  return {
+    F, tl, th,
+    pushTarget: fatiguePush,
+    rawPushTarget: pushTarget,
+    baseGoal,
+    rawGoalSec: rawGoal,
+    goalSec: Math.max(minGoalSec, fatigueGoal),
+    fatigueFactor: ff,
+    blocksToday: blocksToday || 0,
+  };
 }

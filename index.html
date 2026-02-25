@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Focus to Failure — Adaptive focus training that grows with you." />
   <title>Focus to Failure — Wave Trainer</title>
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="manifest" href="manifest.json" />
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -24,6 +31,11 @@
             <span class="badge goal-badge" id="targetsLabel">Goal: --</span>
           </div>
           <div class="header-icons">
+            <button class="icon-btn" id="zenToggleBtn" aria-label="Toggle zen mode" title="Hide timer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
             <button class="icon-btn" id="statsToggleBtn" aria-label="Toggle stats" title="Stats">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M5 19V10"/><path d="M12 19V5"/><path d="M19 19V13"/>
@@ -43,18 +55,36 @@
         </div>
         <div class="header-timer">
           <div class="timer" id="timerLabel">00:00</div>
+          <div class="zen-indicator" id="zenIndicator">Focusing…</div>
           <div class="metrics" id="metricsLabel"></div>
         </div>
       </header>
 
       <!-- ═══ CONTROLS ═══ -->
       <section class="controls" id="controls">
-        <div class="controls-buttons">
-          <button class="btn btn-primary" id="startFocusBtn">Start Focus</button>
-          <button class="btn btn-default" id="pauseBtn" disabled>Pause</button>
-          <button class="btn btn-accent" id="endBreakBtn" disabled>End Break</button>
-          <button class="btn btn-warn" id="distractedBtn" disabled>I Got Distracted</button>
-          <button class="btn btn-ghost" id="resetBtn">Reset</button>
+        <!-- IDLE: single Focus button -->
+        <div class="ctrl-group ctrl-idle">
+          <button class="btn btn-primary btn-lg" id="startFocusBtn">Focus</button>
+        </div>
+        <!-- FOCUSING: Done + Distracted, small pause -->
+        <div class="ctrl-group ctrl-focusing">
+          <div class="ctrl-pair">
+            <button class="btn btn-good" id="doneBtn">Done</button>
+            <button class="btn btn-warn" id="distractedBtn">Distracted</button>
+          </div>
+          <button class="btn-link" id="pauseBtn">Pause</button>
+        </div>
+        <!-- PAUSED: Resume + Done + Distracted -->
+        <div class="ctrl-group ctrl-paused">
+          <div class="ctrl-triple">
+            <button class="btn btn-primary" id="resumeBtn">Resume</button>
+            <button class="btn btn-good" id="doneBtnP">Done</button>
+            <button class="btn btn-warn" id="distractedBtnP">Distracted</button>
+          </div>
+        </div>
+        <!-- BREAK: Skip Break -->
+        <div class="ctrl-group ctrl-break">
+          <button class="btn btn-accent btn-lg" id="endBreakBtn">Skip Break</button>
         </div>
         <label class="controls-option" id="autoFocusToggle">
           <input type="checkbox" id="autoStartFocusMain" />
@@ -65,23 +95,26 @@
       <!-- ═══ STATS PANEL ═══ -->
       <main class="main-content">
         <!-- Status message (always visible) -->
-        <div class="status-bar" id="statusLabel">Press Start Focus and concentrate until you can't.</div>
+        <div class="status-bar" id="statusLabel">Press Focus and concentrate until you can't.</div>
 
         <section class="card stats-card">
           <!-- Stats summary row -->
           <div class="stats-grid">
             <div class="stat"><div class="stat-label">Today</div><div class="stat-value" id="todayCount">--</div></div>
-            <div class="stat"><div class="stat-label">Best</div><div class="stat-value" id="todayBest">--</div></div>
+            <div class="stat"><div class="stat-label">Streak</div><div class="stat-value" id="statStreak">--</div></div>
             <div class="stat"><div class="stat-label">Floor</div><div class="stat-value" id="statFloor">--</div></div>
             <div class="stat"><div class="stat-label">Next Goal</div><div class="stat-value" id="todayGoal">--</div></div>
           </div>
+          <div class="stats-context" id="statsContext"></div>
+          <div class="trophy-row" id="trophyRow" style="display:none"></div>
 
           <!-- Tab bar -->
           <div class="chart-tabs" id="chartTabs">
             <button class="chart-tab active" data-tab="progress">Progress</button>
             <button class="chart-tab" data-tab="today">Today</button>
-            <button class="chart-tab" data-tab="buckets">Time of Day</button>
+            <button class="chart-tab" data-tab="weekly">Weekly</button>
             <button class="chart-tab" data-tab="consistency">Hit Rate</button>
+            <button class="chart-tab" data-tab="distribution">Distribution</button>
             <button class="chart-tab" data-tab="history">History</button>
           </div>
 
@@ -102,10 +135,10 @@
               <thead>
                 <tr>
                   <th>#</th><th>Phase</th><th>Type</th>
-                  <th>Focus</th><th>Break</th>
+                  <th>Focus</th><th>Goal</th><th>Break</th>
                   <th>T_low</th><th>T_high</th><th>Push</th>
                   <th>Crash</th><th>Over</th><th>Stop</th>
-                  <th>Bucket</th><th>Timestamp</th>
+                  <th>Pauses</th><th>Bucket</th><th>Timestamp</th>
                 </tr>
               </thead>
               <tbody id="historyBody"></tbody>
@@ -119,6 +152,7 @@
           <pre class="debug-pre" id="debugText"></pre>
         </div>
       </main>
+      <div class="version-footer" id="versionLabel"></div>
     </div>
   </div>
 
@@ -212,26 +246,11 @@
             <option>Full</option>
           </select>
         </label>
-        <label class="s-row" title="When you hit a clean streak, your floor (minimum baseline) is raised by this many seconds">
-          <span>Floor raise increment (sec)</span>
-          <input type="number" id="floorIncSec" min="15" max="120" step="5" />
-        </label>
-        <label class="s-row" title="How many consecutive clean blocks (no crash, no overshoot) before the floor is raised">
-          <span>Clean streak to raise floor</span>
-          <input type="number" id="floorStreak" min="3" max="11" step="1" />
-        </label>
-        <label class="s-row" title="Push A blocks add this percentage above your floor as a stretch goal">
-          <span>Push A (% above floor)</span>
+        <label class="s-row" title="How much your goal decreases for each additional block in a day. 0% = no fatigue adjustment. Higher values give bigger discounts for later blocks.">
+          <span>Fatigue rate per block</span>
           <div class="s-right">
-            <input type="range" id="pushA" min="0.06" max="0.20" step="0.01" />
-            <span class="s-val" id="pushAVal">12%</span>
-          </div>
-        </label>
-        <label class="s-row" title="Push B is a secondary push with a different stretch target — alternates with Push A in wave cycles">
-          <span>Push B (% above floor)</span>
-          <div class="s-right">
-            <input type="range" id="pushB" min="0.04" max="0.16" step="0.01" />
-            <span class="s-val" id="pushBVal">8%</span>
+            <input type="range" id="fatigueRate" min="0" max="0.10" step="0.01" />
+            <span class="s-val" id="fatigueRateVal">6%</span>
           </div>
         </label>
         <div class="s-divider"></div>
@@ -284,6 +303,19 @@
       </div>
       <div class="win-actions">
         <button id="winModalOk" class="btn btn-claim">Claim It</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MILESTONE MODAL ═══ -->
+  <div id="milestoneModal" class="win-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="milestoneTitle">
+    <div class="win-card milestone-card">
+      <canvas id="confettiCanvas2" class="confetti-canvas" aria-hidden="true"></canvas>
+      <div class="win-emoji milestone-emoji" id="milestoneEmoji">🏆</div>
+      <div class="win-title" id="milestoneTitle">Floor Milestone!</div>
+      <div class="win-body" id="milestoneText">Your floor has reached a new level.</div>
+      <div class="win-actions">
+        <button id="milestoneOk" class="btn btn-claim" onclick="document.getElementById('milestoneModal').classList.add('hidden')">Continue</button>
       </div>
     </div>
   </div>

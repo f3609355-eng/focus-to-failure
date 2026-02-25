@@ -1,10 +1,18 @@
 /**
- * Wave Engine
- * - Owns phase transition logic helpers, cycle generation, and plateau detection.
+ * Wave Engine v2
+ * - Momentum-driven adaptive cycles (replaces fixed alternating pattern)
+ * - Single PUSH type (replaces PUSH_A/PUSH_B)
+ * - Phase transitions, plateau detection, stability gating
  */
 
 export const Phase = { LINEAR:"LINEAR", WAVE:"WAVE" };
-export const BlockType = { CONSOLIDATE:"CONSOLIDATE", RAISE_FLOOR:"RAISE_FLOOR", PUSH_A:"PUSH_A", PUSH_B:"PUSH_B" };
+export const BlockType = { CONSOLIDATE:"CONSOLIDATE", RAISE_FLOOR:"RAISE_FLOOR", PUSH:"PUSH" };
+
+// Back-compat: map old types
+export function normalizeBlockType(bt) {
+  if (bt === "PUSH_A" || bt === "PUSH_B") return BlockType.PUSH;
+  return bt || BlockType.CONSOLIDATE;
+}
 
 export function tierForSeconds(s){
   if (s >= 90*60) return 4;
@@ -13,26 +21,60 @@ export function tierForSeconds(s){
   return 1;
 }
 
-export function buildAlternatingCycle(len){
-  const L = Math.max(3, Math.floor(len||5));
-  const out = [];
-  let pushFlip = false;
-  for (let i=0;i<L;i++){
-    if (i % 2 === 0){
-      out.push(pushFlip ? BlockType.PUSH_B : BlockType.PUSH_A);
-      pushFlip = !pushFlip;
-    } else {
-      out.push(BlockType.CONSOLIDATE);
-    }
-  }
-  return out;
+// ── Momentum ──────────────────────────────
+
+/** Rolling win rate over last N blocks with goals. */
+export function computeMomentum(blocks, windowN = 5) {
+  const withGoals = (blocks || []).filter(b => b && b.goal_seconds > 0);
+  const recent = withGoals.slice(-Math.max(3, windowN));
+  if (recent.length < 2) return { rate: 0.5, wins: 0, total: recent.length, level: "MID" };
+  const wins = recent.filter(b => {
+    const f = Number(b.focus_seconds || 0);
+    const g = Number(b.goal_seconds || 0);
+    // Broadened success: hit goal OR within 90% on push blocks
+    const isPush = normalizeBlockType(b.block_type) === BlockType.PUSH;
+    return isPush ? (f >= g * 0.90) : (f >= g);
+  }).length;
+  const rate = wins / recent.length;
+  return { rate, wins, total: recent.length };
 }
 
-export function startNewCycle(prevId, cfgWave){
-  const cycleId = (prevId||0) + 1;
-  const cyclePos = 0;
-  const cycle = buildAlternatingCycle(cfgWave.cycle_length);
-  return { cycleId, cyclePos, cycle };
+export function momentumLevel(rate, waveCfg) {
+  const hi = Number(waveCfg.momentum_high_threshold ?? 0.80);
+  const lo = Number(waveCfg.momentum_low_threshold ?? 0.40);
+  if (rate >= hi) return "HIGH";
+  if (rate < lo) return "LOW";
+  return "MID";
+}
+
+// ── Adaptive Cycles ───────────────────────
+
+export function buildAdaptiveCycle(momentum, waveCfg) {
+  const level = momentumLevel(momentum.rate, waveCfg);
+  if (level === "HIGH") {
+    // Aggressive: 50% push
+    return [BlockType.PUSH, BlockType.CONSOLIDATE, BlockType.PUSH, BlockType.CONSOLIDATE];
+  }
+  if (level === "LOW") {
+    // Recovery: 20% push
+    return [BlockType.CONSOLIDATE, BlockType.CONSOLIDATE, BlockType.PUSH, BlockType.CONSOLIDATE, BlockType.CONSOLIDATE];
+  }
+  // Medium: 40% push (default)
+  return [BlockType.PUSH, BlockType.CONSOLIDATE, BlockType.CONSOLIDATE, BlockType.PUSH, BlockType.CONSOLIDATE];
+}
+
+export function startNewCycle(prevId, waveCfg, momentum) {
+  const cycleId = (prevId || 0) + 1;
+  const cycle = buildAdaptiveCycle(momentum || { rate: 0.5 }, waveCfg);
+  return { cycleId, cyclePos: 0, cycle };
+}
+
+/** Push intensity percentage based on momentum level. */
+export function pushPctForMomentum(momentum, waveCfg) {
+  const level = momentumLevel(momentum.rate, waveCfg);
+  if (level === "HIGH") return Number(waveCfg.push_pct_high ?? 0.12);
+  if (level === "LOW") return Number(waveCfg.push_pct_low ?? 0.05);
+  return Number(waveCfg.push_pct_mid ?? 0.08);
 }
 
 export function cyclePreview(cycle, waveCfg){
@@ -40,9 +82,40 @@ export function cyclePreview(cycle, waveCfg){
   if (vis === "Hidden") return null;
   if (!cycle || !cycle.length) return null;
   if (vis === "Subtle") return "SUBTLE";
-  const ab = { CONSOLIDATE:"C", RAISE_FLOOR:"R", PUSH_A:"P1", PUSH_B:"P2" };
-  return cycle.map(t=>ab[t]||t).join(" ");
+  const ab = { CONSOLIDATE:"C", RAISE_FLOOR:"R", PUSH:"P" };
+  return cycle.map(t => ab[t] || t).join(" ");
 }
+
+// ── Fatigue ───────────────────────────────
+
+/** Compute fatigue factor for the Nth block today (0-indexed). */
+export function fatigueFactor(blocksToday, waveCfg) {
+  const rate = Number(waveCfg.fatigue_rate_per_block ?? 0.06);
+  const floor = Number(waveCfg.fatigue_floor ?? 0.75);
+  return Math.max(floor, 1 - rate * blocksToday);
+}
+
+// ── Crash Severity ────────────────────────
+
+/**
+ * Determine crash recovery blocks.
+ * - Fatigue crash (block 4+ of day): no penalty
+ * - Mild crash (within 80% of threshold): 1 easy block
+ * - Hard crash (below 80% of threshold): 2 easy blocks
+ */
+export function crashRecoveryBlocks(focusSec, crashThreshold, blocksToday, waveCfg) {
+  // Late-day crashes get no penalty — fatigue curve already accounted for it
+  if (blocksToday >= 3) return 0;
+  if (crashThreshold == null || crashThreshold <= 0) return 0;
+
+  const hardFrac = Number(waveCfg.hard_crash_fraction ?? 0.80);
+  if (focusSec < crashThreshold * hardFrac) {
+    return Number(waveCfg.forced_easy_hard_crash ?? 2);
+  }
+  return Number(waveCfg.forced_easy_mild_crash ?? 1);
+}
+
+// ── Wave Gating & Stability ───────────────
 
 export function gateIntoWave(m, analyticsCfg){
   if (m.floor==null || m.recent_iqr==null) return false;
@@ -62,6 +135,8 @@ export function dropToStability(m, prevRecentIQR, analyticsCfg){
   }
   return false;
 }
+
+// ── Plateau Detection ─────────────────────
 
 export function detectPlateau(evalBlocks, waveCfg, floorCfg={}){
   const N = Math.max(6, Math.floor(waveCfg.plateau_eval_blocks || 10));

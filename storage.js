@@ -1,24 +1,105 @@
 /**
- * IndexedDB storage
- * - One database: focus_to_failure
- * - One store: blocks (keyPath: idx)
+ * IndexedDB storage with migration support.
+ * - Database: FocusToFailureDB
+ * - Store: blocks (keyPath: idx)
+ *
+ * To add a migration:
+ * 1. Bump DB_VERSION
+ * 2. Add a case to the switch in onupgradeneeded
  */
-const DB_NAME = "focus_to_failure";
-const DB_VERSION = 1;
+const DB_NAME = "FocusToFailureDB";
+const DB_VERSION = 2; // bump when schema changes
 const STORE = "blocks";
 
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "idx" });
+      const oldVersion = event.oldVersion || 0;
+
+      // Version 0→1: Create blocks store (original schema)
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: "idx" });
+        }
       }
+
+      // Version 1→2: Add date index for weekly queries
+      if (oldVersion < 2) {
+        const tx = req.transaction;
+        if (tx) {
+          const store = tx.objectStore(STORE);
+          if (!store.indexNames.contains("by_date")) {
+            store.createIndex("by_date", "date", { unique: false });
+          }
+          if (!store.indexNames.contains("by_bucket")) {
+            store.createIndex("by_bucket", "bucket", { unique: false });
+          }
+        }
+      }
+
+      // Future migrations go here:
+      // if (oldVersion < 3) { ... }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Also try to open old DB and migrate data if it exists
+      migrateOldDB(req.result).then(() => resolve(req.result));
+    };
     req.onerror = () => reject(req.error);
   });
+}
+
+/** One-time migration from old "focus_to_failure" DB name to new name */
+async function migrateOldDB(newDb) {
+  const OLD_DB_NAME = "focus_to_failure";
+  try {
+    // Check if old DB exists by trying to open it at version 1
+    const oldReq = indexedDB.open(OLD_DB_NAME, 1);
+    await new Promise((resolve, reject) => {
+      oldReq.onupgradeneeded = () => {
+        // Old DB doesn't exist — this is creating it. Abort.
+        oldReq.transaction.abort();
+        resolve();
+      };
+      oldReq.onsuccess = async () => {
+        const oldDb = oldReq.result;
+        if (!oldDb.objectStoreNames.contains("blocks")) {
+          oldDb.close();
+          resolve();
+          return;
+        }
+        // Read all blocks from old DB
+        const tx = oldDb.transaction("blocks", "readonly");
+        const getAll = tx.objectStore("blocks").getAll();
+        getAll.onsuccess = async () => {
+          const oldBlocks = getAll.result || [];
+          oldDb.close();
+          if (oldBlocks.length > 0) {
+            // Check if new DB already has data
+            const newTx = newDb.transaction(STORE, "readonly");
+            const newCount = newTx.objectStore(STORE).count();
+            await new Promise(r => { newCount.onsuccess = r; });
+            if (newCount.result === 0) {
+              // Copy old blocks to new DB
+              const writeTx = newDb.transaction(STORE, "readwrite");
+              const writeStore = writeTx.objectStore(STORE);
+              for (const b of oldBlocks) writeStore.put(b);
+              await new Promise(r => { writeTx.oncomplete = r; });
+              console.log(`Migrated ${oldBlocks.length} blocks from old DB`);
+            }
+            // Delete old DB
+            indexedDB.deleteDatabase(OLD_DB_NAME);
+          }
+          resolve();
+        };
+        getAll.onerror = () => { oldDb.close(); resolve(); };
+      };
+      oldReq.onerror = () => resolve();
+    });
+  } catch (e) {
+    // Silently ignore migration errors
+  }
 }
 
 export async function getAllBlocks() {
