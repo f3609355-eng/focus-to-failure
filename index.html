@@ -63,23 +63,26 @@
           <div class="zen-indicator" id="zenIndicator">Focusing…</div>
           <div class="metrics" id="metricsLabel"></div>
         </div>
-      </header>
+      
+
+      <section class="controls" id="controls">
+              <button class="btn btn-primary btn-hero" id="heroBtn">Focus</button>
+              <div class="ctrl-secondary">
+                <button class="btn btn-good" id="doneBtn" disabled>Done</button>
+                <button class="btn btn-warn" id="distractedBtn" disabled>Distracted</button>
+                <button class="btn btn-reset" id="resetBtn">Reset</button>
+              </div>
+              <div class="ctrl-footer">
+                <label class="controls-option" id="autoFocusToggle">
+                  <input type="checkbox" id="autoStartFocusMain" />
+                  <span>Auto-start next focus</span>
+                </label>
+              </div>
+            </section>
+</header>
 
       <!-- ═══ CONTROLS ═══ -->
-      <section class="controls" id="controls">
-        <button class="btn btn-primary btn-hero" id="heroBtn">Focus</button>
-        <div class="ctrl-secondary">
-          <button class="btn btn-good" id="doneBtn" disabled>Done</button>
-          <button class="btn btn-warn" id="distractedBtn" disabled>Distracted</button>
-          <button class="btn btn-reset" id="resetBtn" disabled>Reset</button>
-        </div>
-        <div class="ctrl-footer">
-          <label class="controls-option" id="autoFocusToggle">
-            <input type="checkbox" id="autoStartFocusMain" />
-            <span>Auto-start next focus</span>
-          </label>
-        </div>
-      </section>
+      
 
       <!-- ═══ STATS PANEL ═══ -->
       <main class="main-content">

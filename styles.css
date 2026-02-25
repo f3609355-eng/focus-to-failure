@@ -218,6 +218,17 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   width: 100%;
 }
 
+/* Controls integrated into hero card */
+.hero .controls {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 12px 0 0;
+  max-width: 420px;
+  margin-top: 14px;
+}
+
+
 /* Hero button — always present, morphs label + color */
 .btn-hero {
   width: 100%;

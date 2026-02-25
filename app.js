@@ -747,8 +747,8 @@ function syncControls(uiState) {
   if (done) done.disabled = !canStop;
   if (dist) dist.disabled = !canStop;
 
-  // Reset: enabled when paused or idle with elapsed time
-  const canReset = (uiState === "paused");
+  // Reset: always enabled (safe; does not clear history)
+  const canReset = true;
   if (reset) reset.disabled = !canReset;
 
   switch (uiState) {
