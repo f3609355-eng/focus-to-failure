@@ -46,6 +46,11 @@
                 <path d="M4 6h16v12H4z"/><path d="M7 9h10M7 12h10M7 15h7"/>
               </svg>
             </button>
+            <button class="icon-btn" id="openAboutBtn" aria-label="About" title="How to use">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+              </svg>
+            </button>
             <button class="icon-btn" id="openSettingsBtn" aria-label="Settings" title="Settings">
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.13 7.13 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.22-1.12.52-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.64.22l2.39-.96c.5.41 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.22 1.12-.52 1.63-.94l2.39.96c.24.1.51.01.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/>
@@ -62,34 +67,18 @@
 
       <!-- ═══ CONTROLS ═══ -->
       <section class="controls" id="controls">
-        <!-- IDLE: single Focus button -->
-        <div class="ctrl-group ctrl-idle">
-          <button class="btn btn-primary btn-lg" id="startFocusBtn">Focus</button>
+        <button class="btn btn-primary btn-hero" id="heroBtn">Focus</button>
+        <div class="ctrl-secondary">
+          <button class="btn btn-good" id="doneBtn" disabled>Done</button>
+          <button class="btn btn-warn" id="distractedBtn" disabled>Distracted</button>
+          <button class="btn btn-reset" id="resetBtn" disabled>Reset</button>
         </div>
-        <!-- FOCUSING: Done + Distracted, small pause -->
-        <div class="ctrl-group ctrl-focusing">
-          <div class="ctrl-pair">
-            <button class="btn btn-good" id="doneBtn">Done</button>
-            <button class="btn btn-warn" id="distractedBtn">Distracted</button>
-          </div>
-          <button class="btn-link" id="pauseBtn">Pause</button>
+        <div class="ctrl-footer">
+          <label class="controls-option" id="autoFocusToggle">
+            <input type="checkbox" id="autoStartFocusMain" />
+            <span>Auto-start next focus</span>
+          </label>
         </div>
-        <!-- PAUSED: Resume + Done + Distracted -->
-        <div class="ctrl-group ctrl-paused">
-          <div class="ctrl-triple">
-            <button class="btn btn-primary" id="resumeBtn">Resume</button>
-            <button class="btn btn-good" id="doneBtnP">Done</button>
-            <button class="btn btn-warn" id="distractedBtnP">Distracted</button>
-          </div>
-        </div>
-        <!-- BREAK: Skip Break -->
-        <div class="ctrl-group ctrl-break">
-          <button class="btn btn-accent btn-lg" id="endBreakBtn">Skip Break</button>
-        </div>
-        <label class="controls-option" id="autoFocusToggle">
-          <input type="checkbox" id="autoStartFocusMain" />
-          <span>Auto-start next focus after break</span>
-        </label>
       </section>
 
       <!-- ═══ STATS PANEL ═══ -->
@@ -288,6 +277,109 @@
           <button class="btn btn-sm btn-default" id="resetDefaultsBtn" title="Reset all settings to their original default values">Reset Defaults</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══ ABOUT MODAL ═══ -->
+  <div class="modal hidden" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="modal-header">
+      <div class="modal-title" id="aboutTitle">How to Use Focus to Failure</div>
+      <button class="btn btn-pill btn-sm" id="closeAboutBtn">Close</button>
+    </div>
+    <div class="modal-body about-body">
+
+      <div class="about-hero">
+        <div class="about-hero-icon">🎯</div>
+        <p class="about-hero-text">Focus until you can't. The app learns your rhythm and grows with you.</p>
+      </div>
+
+      <div class="about-section">
+        <div class="about-heading">The Core Loop</div>
+        <div class="about-steps">
+          <div class="about-step">
+            <span class="about-step-num">1</span>
+            <div>
+              <strong>Press Focus</strong> and do your work. Don't watch the timer — use zen mode (the eye icon) to hide it. Just work until your concentration breaks naturally.
+            </div>
+          </div>
+          <div class="about-step">
+            <span class="about-step-num">2</span>
+            <div>
+              <strong>Press Done</strong> when you feel your focus slipping but you're choosing to stop. Press <strong>Distracted</strong> if you realize you've already lost focus. Be honest — the distinction helps the algorithm understand your patterns.
+            </div>
+          </div>
+          <div class="about-step">
+            <span class="about-step-num">3</span>
+            <div>
+              <strong>Take your break.</strong> The app calculates break length based on how long you focused. Step away from the screen. Move. Look at something far away. Then come back for the next block.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-section">
+        <div class="about-heading">How the Algorithm Works</div>
+        <p>The app tracks your <strong>floor</strong> — the 35th percentile of your recent sessions. This is what you can reliably do on an average day. Everything is built around raising this number over time.</p>
+
+        <div class="about-concept">
+          <span class="about-concept-label">📈 Linear Phase</span>
+          Your first sessions. The app is learning your baseline. Goals increase as you prove consistency. Once you plateau, you transition to Wave mode.
+        </div>
+
+        <div class="about-concept">
+          <span class="about-concept-label">🌊 Wave Phase</span>
+          Alternating cycles of <strong>Push</strong> blocks (stretch goals above your floor) and <strong>Consolidation</strong> blocks (comfortable goals at your floor). The mix adapts to your momentum — when you're hitting goals consistently, you get more pushes. When you're struggling, more consolidation.
+        </div>
+
+        <div class="about-concept">
+          <span class="about-concept-label">⚡ Momentum</span>
+          Your rolling win rate over the last 5 blocks. <strong>Hot</strong> (80%+) means aggressive cycles. <strong>Steady</strong> (40-80%) means balanced. <strong>Recovery</strong> (below 40%) means easy cycles with gentle pushes. You'll see your momentum in the stats bar.
+        </div>
+
+        <div class="about-concept">
+          <span class="about-concept-label">😴 Fatigue Curve</span>
+          Your 4th block of the day is harder than your 1st. The app knows this. Goals automatically decrease for later blocks (6% per block by default, adjustable in settings). A 22-minute block 4 after three 30-minute blocks is a great session — the algorithm treats it that way.
+        </div>
+      </div>
+
+      <div class="about-section">
+        <div class="about-heading">What the Stats Mean</div>
+        <div class="about-concept">
+          <span class="about-concept-label">🏠 Floor</span>
+          Your reliable baseline — what you can do on an okay day. This is the number you're trying to raise. When it goes up, you've genuinely improved.
+        </div>
+        <div class="about-concept">
+          <span class="about-concept-label">🔥 Streak</span>
+          Consecutive sessions where you hit your goal. Long streaks mean the algorithm has dialed in your level. Broken streaks are fine — they're information, not failure.
+        </div>
+        <div class="about-concept">
+          <span class="about-concept-label">🏆 Milestones</span>
+          Earned when your floor crosses key thresholds (15m, 20m, 25m, 30m, etc). These are permanent. They represent real, sustained growth — not a single good session.
+        </div>
+        <div class="about-concept">
+          <span class="about-concept-label">📊 Weekly Floor Delta</span>
+          Shown in the stats bar. Tells you whether your floor moved up, down, or held steady compared to last week. The most important feedback signal in the app.
+        </div>
+      </div>
+
+      <div class="about-section">
+        <div class="about-heading">Tips for Getting the Most Out of It</div>
+        <div class="about-tip"><strong>Be consistent, not heroic.</strong> Three 25-minute blocks every day beats one 90-minute block once a week. The algorithm rewards consistency.</div>
+        <div class="about-tip"><strong>Use zen mode.</strong> Watching the timer is counterproductive. Hide it and let the app do the tracking. You'll get a subtle indicator when you hit your goal.</div>
+        <div class="about-tip"><strong>Don't chase overshoots.</strong> Going way past your goal feels great but it inflates your stats and can make tomorrow's goals too hard. When you hit your goal, finishing soon after is ideal.</div>
+        <div class="about-tip"><strong>Distracted ≠ failure.</strong> Pressing "Distracted" gives the algorithm honest data. A short distracted block followed by a strong recovery block is better than a long block where you were half-checked-out.</div>
+        <div class="about-tip"><strong>Trust the fatigue curve.</strong> If your 4th block feels easy despite the lower goal, that's the system working. You're building endurance without burnout.</div>
+        <div class="about-tip"><strong>The floor is everything.</strong> Ignore individual sessions. The floor is the signal. If it's trending up week over week, you're improving. Everything else is noise.</div>
+      </div>
+
+      <div class="about-section about-section-last">
+        <div class="about-heading">Keyboard Shortcuts</div>
+        <div class="about-keys">
+          <span class="about-key"><kbd>Space</kbd> Start focus / Pause / Resume</span>
+          <span class="about-key"><kbd>Esc</kbd> Close modals</span>
+        </div>
+      </div>
+
     </div>
   </div>
 

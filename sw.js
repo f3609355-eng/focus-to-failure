@@ -1,4 +1,4 @@
-const CACHE_NAME = "ftf-v4.0.1";
+const CACHE_NAME = "ftf-v4.0.6";
 const ASSETS = [
   "./",
   "./index.html",

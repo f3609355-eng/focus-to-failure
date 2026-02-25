@@ -211,65 +211,93 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-/* State-based button groups: only the active group shows */
-.ctrl-group { display: none; }
-body[data-ui="idle"] .ctrl-idle { display: block; }
-body[data-ui="focusing"] .ctrl-focusing { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-body[data-ui="paused"] .ctrl-paused { display: block; }
-body[data-ui="break"] .ctrl-break { display: block; }
-
-.ctrl-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 8px;
+  max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
   width: 100%;
 }
-.ctrl-triple {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
+
+/* Hero button — always present, morphs label + color */
+.btn-hero {
   width: 100%;
+  padding: 12px 20px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease, transform 60ms ease;
 }
-.ctrl-pair > .btn,
-.ctrl-triple > .btn {
+
+/* Hero color states */
+.btn-hero[data-hero="pause"] {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-hero[data-hero="pause"]:hover { background: var(--surface); }
+
+.btn-hero[data-hero="resume"] {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-hero[data-hero="break"] {
+  background: var(--panel);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn-hero[data-hero="break"]:hover { background: var(--accent); color: #fff; }
+
+/* Secondary row — Done, Distracted, Reset — always visible, always same position */
+.ctrl-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+.ctrl-secondary > .btn {
+  width: 100%;
   min-width: 0;
-  width: 100%;
+  padding: 9px 8px;
+  font-size: 0.82rem;
+  transition: opacity 250ms ease, background var(--transition), transform 60ms ease;
+}
+/* Softer disabled — present but muted, no jarring pop */
+.ctrl-secondary > .btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+  transform: none;
 }
 
-/* Large button variant */
-.btn-lg {
-  width: 100%;
-  padding: 14px 20px;
-  font-size: 1rem;
-}
-
-/* Pause as a subtle text link */
-.btn-link {
-  background: none;
-  border: none;
+/* Reset as a compact ghost button */
+.ctrl-secondary > .btn-reset {
+  padding: 9px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   color: var(--muted);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 12px;
-  letter-spacing: 0.02em;
-  transition: color var(--transition);
+  background: transparent;
+  border-color: transparent;
 }
-.btn-link:hover { color: var(--text); }
+.ctrl-secondary > .btn-reset:hover {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-light);
+}
+.ctrl-secondary > .btn-reset:disabled {
+  opacity: 0.25;
+}
 
-.controls-buttons {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+/* Footer */
+.ctrl-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
-.controls-buttons > button {
-  min-width: 0;
-  width: 100%;
-}
+
 .controls-option {
   display: flex;
   align-items: center;
@@ -492,6 +520,138 @@ body[data-ui="break"] .ctrl-break { display: block; }
 }
 .milestone-emoji {
   font-size: 3.5rem !important;
+}
+
+/* ════════════════════════════════════
+   ABOUT PAGE
+   ════════════════════════════════════ */
+.about-body {
+  padding: 16px 20px !important;
+  gap: 0 !important;
+}
+
+.about-hero {
+  text-align: center;
+  padding: 18px 12px 22px;
+}
+.about-hero-icon {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.about-hero-text {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.about-section {
+  padding: 16px 0;
+  border-top: 1px solid var(--border-light);
+}
+.about-section-last {
+  padding-bottom: 8px;
+}
+
+.about-heading {
+  font-weight: 800;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.about-section > p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+/* Numbered steps */
+.about-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.about-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+.about-step-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+/* Concept blocks */
+.about-concept {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+.about-concept-label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 3px;
+  font-size: 0.83rem;
+}
+
+/* Tips */
+.about-tip {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+  padding: 6px 0;
+}
+.about-tip + .about-tip {
+  border-top: 1px solid var(--border-light);
+}
+
+/* Keyboard shortcuts */
+.about-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.about-key {
+  font-size: 0.82rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.about-key kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 40px;
+  text-align: center;
 }
 
 /* ── Chart Tabs ── */
@@ -957,8 +1117,6 @@ body.zen #zenToggleBtn { color: var(--accent); }
 @media (max-width: 480px) {
   .timer { font-size: 2.8rem; }
   .header-timer { min-height: 3.6rem; }
-  .ctrl-triple { grid-template-columns: 1fr 1fr; }
-  .ctrl-triple > .btn:first-child { grid-column: 1 / -1; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .setting-right { min-width: 10rem; }
   .setting-row input[type="range"] { width: 7rem; }

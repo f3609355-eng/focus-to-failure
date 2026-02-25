@@ -5,7 +5,7 @@ import { computeMetrics } from "./analytics.js";
 import { blendMetrics } from "./engine/blendEngine.js";
 import { WavePlanner, Phase, BlockType } from "./planner.js";
 
-const VERSION = "4.0.1";
+const VERSION = "4.0.6";
 import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution, destroyChart } from "./charts.js";
 
 // ════════════════════════════════════════════════
@@ -707,7 +707,6 @@ function renderHeader(h) {
   modeEl.textContent = h.mode;
   modeEl.setAttribute("data-mode", h.mode);
   document.body.setAttribute("data-mode", h.mode);
-  document.body.setAttribute("data-ui", h.uiState);
 
   document.body.classList.toggle("goal-hit", h.goalHit);
 
@@ -724,6 +723,8 @@ function renderHeader(h) {
     metricsEl.style.display = h.metricsVisible ? "" : "none";
   }
 
+  syncControls(h.uiState);
+
   try { syncTodayCard(); } catch {}
 
   if (h.idleStatus) {
@@ -731,6 +732,43 @@ function renderHeader(h) {
   }
 
   try { $("debugText").textContent = h.debugText; } catch {}
+}
+
+/** Update hero button label/style and secondary button enabled state. */
+function syncControls(uiState) {
+  const hero = $("heroBtn");
+  const done = $("doneBtn");
+  const dist = $("distractedBtn");
+  const reset = $("resetBtn");
+  if (!hero) return;
+
+  // Done + Distracted: enabled only during focus or pause
+  const canStop = (uiState === "focusing" || uiState === "paused");
+  if (done) done.disabled = !canStop;
+  if (dist) dist.disabled = !canStop;
+
+  // Reset: enabled when paused or idle with elapsed time
+  const canReset = (uiState === "paused");
+  if (reset) reset.disabled = !canReset;
+
+  switch (uiState) {
+    case "focusing":
+      hero.textContent = "Pause";
+      hero.setAttribute("data-hero", "pause");
+      break;
+    case "paused":
+      hero.textContent = "Resume";
+      hero.setAttribute("data-hero", "resume");
+      break;
+    case "break":
+      hero.textContent = "Skip Break";
+      hero.setAttribute("data-hero", "break");
+      break;
+    default: // idle
+      hero.textContent = "Focus";
+      hero.removeAttribute("data-hero");
+      break;
+  }
 }
 
 function syncHeader() {
@@ -1234,6 +1272,18 @@ function closeSettings() {
   document.body.classList.remove("modal-open");
 }
 
+function openAbout() {
+  $("modalBackdrop").classList.remove("hidden");
+  $("aboutModal").classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+function closeAbout() {
+  $("modalBackdrop").classList.add("hidden");
+  $("aboutModal").classList.add("hidden");
+  document.body.classList.remove("modal-open");
+}
+
 // ════════════════════════════════════════════════
 // Export / Import
 // ════════════════════════════════════════════════
@@ -1429,17 +1479,17 @@ async function importSettings(file) {
 // ════════════════════════════════════════════════
 
 function wireMainButtons() {
-  $("startFocusBtn").addEventListener("click", startFocus);
-  $("pauseBtn").addEventListener("click", togglePause);
-  $("resumeBtn")?.addEventListener("click", togglePause);
-  $("endBreakBtn").addEventListener("click", endBreakEarly);
+  // Hero button — dispatches based on current state
+  $("heroBtn")?.addEventListener("click", () => {
+    const state = $("heroBtn")?.getAttribute("data-hero");
+    if (state === "pause") togglePause();
+    else if (state === "resume") togglePause();
+    else if (state === "break") endBreakEarly();
+    else startFocus(); // idle / default
+  });
   $("distractedBtn").addEventListener("click", () => finalizeFocus("DISTRACTED"));
-  $("distractedBtnP")?.addEventListener("click", () => finalizeFocus("DISTRACTED"));
   $("doneBtn")?.addEventListener("click", () => finalizeFocus("COMPLETED"));
-  $("doneBtnP")?.addEventListener("click", () => finalizeFocus("COMPLETED"));
-
-  // Set initial UI state
-  document.body.setAttribute("data-ui", "idle");
+  $("resetBtn")?.addEventListener("click", resetTimer);
 
   // Zen mode toggle
   $("zenToggleBtn")?.addEventListener("click", toggleZen);
@@ -1447,7 +1497,9 @@ function wireMainButtons() {
 
   $("openSettingsBtn").addEventListener("click", openSettings);
   $("closeSettingsBtn").addEventListener("click", closeSettings);
-  $("modalBackdrop").addEventListener("click", closeSettings);
+  $("openAboutBtn")?.addEventListener("click", openAbout);
+  $("closeAboutBtn")?.addEventListener("click", closeAbout);
+  $("modalBackdrop").addEventListener("click", () => { closeSettings(); closeAbout(); });
 
   // Win modal
   $("winModalOk")?.addEventListener("click", hideWinModal);
@@ -1458,13 +1510,16 @@ function wireMainButtons() {
     if (e.key === "Escape") {
       if (!$("milestoneModal")?.classList.contains("hidden")) { hideWinModal(); return; }
       if (!$("winModal")?.classList.contains("hidden")) { hideWinModal(); return; }
+      if (!$("aboutModal")?.classList.contains("hidden")) { closeAbout(); return; }
       if (!$("settingsModal")?.classList.contains("hidden")) { closeSettings(); return; }
     }
-    // Space to start/pause (only when not typing)
+    // Space mirrors hero button (only when not typing)
     if (e.key === " " && !["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName)) {
       e.preventDefault();
-      if (startTS == null) startFocus();
-      else togglePause();
+      const heroState = $("heroBtn")?.getAttribute("data-hero");
+      if (heroState === "pause" || heroState === "resume") togglePause();
+      else if (heroState === "break") endBreakEarly();
+      else startFocus();
     }
   });
 
