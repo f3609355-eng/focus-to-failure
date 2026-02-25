@@ -1,6 +1,6 @@
 {
-  "name": "Focus to Failure",
-  "short_name": "FTF",
+  "name": "fooocus",
+  "short_name": "fooocus",
   "description": "Adaptive focus training that grows with you",
   "start_url": "./",
   "display": "standalone",
@@ -8,7 +8,7 @@
   "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\ud83c\udfaf</text></svg>",
       "sizes": "any",
       "type": "image/svg+xml"
     }

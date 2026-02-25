@@ -707,8 +707,11 @@ function computeHeaderState() {
 /** Render computed header state to the DOM. */
 function renderHeader(h) {
   const modeEl = $("modeLabel");
-  modeEl.textContent = h.mode;
+  // Branding lives in the left badge; keep the actual mode as an attribute + tooltip.
+  const BRAND = "fooocus.ing";
+  modeEl.textContent = BRAND;
   modeEl.setAttribute("data-mode", h.mode);
+  modeEl.title = `Mode: ${h.mode}`;
   document.body.setAttribute("data-mode", h.mode);
 
   document.body.classList.toggle("goal-hit", h.goalHit);
@@ -750,10 +753,9 @@ function syncControls(uiState) {
   if (done) done.disabled = !canStop;
   if (dist) dist.disabled = !canStop;
 
-  // Reset: enabled when timer is active
-  if (reset) reset.disabled = (uiState === "idle");
-
-  switch (uiState) {
+  // Reset: always enabled (resets current run UI without wiping history)
+  if (reset) reset.disabled = false;
+switch (uiState) {
     case "focusing":
       hero.textContent = "Pause";
       hero.setAttribute("data-hero", "pause");
@@ -1416,7 +1418,7 @@ async function importBackupFile(file){
     const payload = JSON.parse(text);
     // Basic guard
     if (!payload || payload._type !== "ftf_backup_v1") {
-      if (!confirm("This file does not look like a Focus to Failure backup. Try importing anyway?")) return;
+      if (!confirm("This file does not look like a fooocus backup. Try importing anyway?")) return;
     }
     if (!confirm("Importing a backup will overwrite your current history and settings. Continue?")) return;
     await importBackup(payload, { overwrite: true });
@@ -1710,7 +1712,7 @@ async function init() {
   // Version display
   const vEl = $("versionLabel");
   if (vEl) vEl.textContent = `v${VERSION}`;
-  console.log(`Focus to Failure v${VERSION}`);
+  console.log(`fooocus v${VERSION}`);
 
   // Check for interrupted session (power loss, tab crash)
   const staleSession = getInflightSession();
@@ -1744,7 +1746,7 @@ if (window.__FTF_TEST__) {
 }
 
 init().catch((err) => {
-  console.error("Focus to Failure: init failed", err);
+  console.error("fooocus: init failed", err);
   document.body.innerHTML = `
     <div style="max-width:420px;margin:60px auto;padding:24px;font-family:system-ui;text-align:center">
       <h2 style="color:#dc2626">Something went wrong</h2>

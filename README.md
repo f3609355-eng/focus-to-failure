@@ -1,4 +1,4 @@
-# Focus to Failure — Wave Trainer
+# fooocus — Wave Trainer
 
 An adaptive focus training app that builds your concentration through progressive wave cycles. Track your focus sessions, earn stickers for hitting goals, and watch your baseline improve over time.
 

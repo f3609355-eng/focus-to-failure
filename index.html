@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Focus to Failure — Adaptive focus training that grows with you." />
-  <title>Focus to Failure — Wave Trainer</title>
+  <meta name="description" content="fooocus.ing — adaptive focus training that builds your capacity over time." />
+  <title>fooocus.ing</title>
   <meta name="theme-color" content="#2563eb" />
   <link rel="manifest" href="manifest.json" />
   <script>
@@ -26,7 +26,7 @@
       <header class="header" id="header">
         <div class="header-top">
           <div class="header-meta">
-            <span class="badge mode-badge" id="modeLabel">FOCUS</span>
+            <span class="badge mode-badge" id="modeLabel" data-mode="FOCUS">fooocus.ing</span>
             <span class="badge phase-badge" id="phaseLabel">--</span>
             <span class="badge goal-badge" id="targetsLabel">Goal: --</span>
           </div>
@@ -59,20 +59,19 @@
           </div>
         </div>
 
+        <div class="header-focusbox">
+
         <div class="header-timer">
           <div class="timer" id="timerLabel">00:00</div>
           <div class="zen-indicator" id="zenIndicator">Focusing…</div>
           <div class="metrics" id="metricsLabel"></div>
         </div>
-
-        <div class="header-divider"></div>
-
-        <div class="header-controls">
+<div class="header-controls">
           <div class="ctrl-row">
             <button class="btn btn-primary btn-hero" id="heroBtn">Focus</button>
             <button class="btn btn-good" id="doneBtn" disabled>Done</button>
             <button class="btn btn-warn" id="distractedBtn" disabled>Distracted</button>
-            <button class="btn btn-reset" id="resetBtn" disabled>Reset</button>
+            <button class="btn btn-reset" id="resetBtn">Reset</button>
           </div>
           <div class="ctrl-footer">
             <label class="controls-option" id="autoFocusToggle">
@@ -81,6 +80,7 @@
             </label>
           </div>
         </div>
+      </div>
 
         <div class="header-status" id="statusLabel">Press Focus and concentrate until you can't.</div>
       </header>
@@ -285,7 +285,7 @@
   <!-- ═══ ABOUT MODAL ═══ -->
   <div class="modal hidden" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="modal-header">
-      <div class="modal-title" id="aboutTitle">How to Use Focus to Failure</div>
+      <div class="modal-title" id="aboutTitle">How to Use fooocus</div>
       <button class="btn btn-pill btn-sm" id="closeAboutBtn">Close</button>
     </div>
     <div class="modal-body about-body">
