@@ -358,6 +358,40 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
 .header-status.status-good { color: var(--success); }
 .header-status.status-warn { color: var(--warn); }
 
+/* ════════════════════════════════════
+   VOLUME PROGRESS BAR
+   ════════════════════════════════════ */
+.volume-progress {
+  padding: 4px 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.volume-track {
+  height: 6px;
+  background: var(--border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.volume-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 400ms ease;
+}
+/* Goal hit: green bar */
+.volume-bar.hit {
+  background: var(--success);
+}
+.volume-text {
+  font-size: 0.70rem;
+  color: var(--muted);
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Buttons ── */
 .btn {
   font-family: inherit;

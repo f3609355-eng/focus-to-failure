@@ -90,6 +90,26 @@ export const DEFAULT_CONFIG = {
     goal_override_enabled: false,
     goal_override_minutes: 25,
   },
+  volume: {
+    // Volume floor (daily total)
+    volume_window_days: 14,
+    min_days_for_floor: 3,
+    volume_floor_percentile: 0.35,
+    volume_stretch_pct: 0.05,        // goal = floor * 1.05
+    start_volume_minutes: 90,        // bootstrap goal before floor exists
+
+    // Session comfort (how far below session floor to set goals)
+    session_comfort_pct: 0.90,       // goal = sessionFloor * 0.90
+    start_session_minutes: 25,
+    absolute_min_session_minutes: 15,
+
+    // Gap-based fatigue
+    fresh_after_minutes: 120,        // fully fresh after 2hr gap
+    back_to_back_factor: 0.88,       // 12% penalty for immediate restart
+
+    // Volume-aware breaks
+    early_break_bonus: 0.25,         // +25% break time early in day (ramps to 0% near goal)
+  },
 };
 
 /** Deep clone via JSON round-trip. */

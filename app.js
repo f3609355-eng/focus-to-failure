@@ -4,8 +4,9 @@ import { fmtHHMMSS, fmtMin, nowTimestamp, bucketForDate, downloadText, escHTML }
 import { computeMetrics } from "./analytics.js";
 import { blendMetrics } from "./engine/blendEngine.js";
 import { WavePlanner, Phase, BlockType } from "./planner.js";
+import { computeVolumeState, computeSessionTarget, hourToWindowKey } from "./engine/volumeEngine.js";
 
-const VERSION = "4.1.0";
+const VERSION = "5.0.0";
 import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution, destroyChart } from "./charts.js";
 
 // ════════════════════════════════════════════════
@@ -86,6 +87,9 @@ let activeTab = "progress";
 let settingsWired = false;
 let zenMode = localStorage.getItem("ftf_zen") === "1";
 let lastAutoSave = 0;
+
+// Volume system state (computed fresh each render)
+let volState = null;
 
 const SESSION_KEY = "ftf_inflight_session";
 const AUTOSAVE_INTERVAL_MS = 15_000; // save every 15s during focus
@@ -280,6 +284,11 @@ function computeBreakSeconds(focusSeconds, crash = false, overshoot = false, isP
   if (overshoot) mult *= b.overshoot_break_multiplier;
   if (isPush)    mult *= b.push_break_multiplier;
 
+  // Volume-aware: longer breaks early in the day to preserve energy
+  if (volState?.breakMultiplier) {
+    mult *= volState.breakMultiplier;
+  }
+
   let sec = Math.round(base * mult);
   sec = Math.max(b.min_break_seconds, sec);
   if (b.max_break_minutes > 0) sec = Math.min(b.max_break_minutes * 60, sec);
@@ -440,6 +449,41 @@ const m = {
 
   const plan = planner.planNext(blocks, m, { bucket: bucketNow, bucketBlocks, intensity, blocksToday });
 
+  // ── Volume system: compute daily volume state ──
+  const vCfg = cfg.volume || {};
+  const vs = computeVolumeState(blocks, vCfg, Date.now());
+  volState = vs; // store globally for UI
+
+  // Volume-aware session goal: cap the planner's goal at the comfort level
+  // This keeps sessions easy so you do more of them → more daily volume
+  if (!cfg.debug.goal_override_enabled && plan.floor_sec > 0) {
+    const sessionTarget = computeSessionTarget(
+      plan.floor_sec, vs.gapFatigue, vs.windowAvgSec, vCfg
+    );
+    // Only moderate DOWN, never push up
+    if (sessionTarget < plan.goal_sec) {
+      plan.debug = plan.debug || {};
+      plan.debug.volume_original_goal = plan.goal_sec;
+      plan.debug.volume_session_target = sessionTarget;
+      plan.debug.volume_gap_fatigue = vs.gapFatigue;
+      plan.goal_sec = sessionTarget;
+    }
+  }
+
+  // Attach volume context to plan
+  plan.volume = {
+    todayTotalSec: vs.todayTotalSec,
+    volumeGoalSec: vs.volumeGoalSec,
+    volumeFloorSec: vs.volumeFloorSec,
+    progressPct: vs.progressPct,
+    remainingSec: vs.remainingSec,
+    volumeHit: vs.volumeHit,
+    gapFatigue: vs.gapFatigue,
+    gapMinutes: vs.gapMinutes,
+    breakMultiplier: vs.breakMultiplier,
+    currentWindow: vs.currentWindow,
+  };
+
   // Manual goal override (debug)
   if (cfg.debug.goal_override_enabled) {
     const min = Number(cfg.debug.goal_override_minutes || 0);
@@ -513,23 +557,48 @@ function syncTodayCard() {
   const { m, plan } = ensureCached();
   const streak = currentStreak();
   const winRate = computeWinRate(10);
+  const vs = volState; // volume state from last planNow()
 
-  $set("todayCount", "textContent", String(s.count || 0));
-  $set("statStreak", "textContent", streak > 0 ? `${streak} 🔥` : "0");
-  $set("statFloor", "textContent", plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--");
-  $set("todayGoal", "textContent", fmtHHMMSS(plan.goal_sec || 0));
+  // Volume-first stats
+  if (vs) {
+    $set("todayCount", "textContent", vs.todayCount > 0 ? `${fmtHHMMSS(vs.todayTotalSec)} / ${fmtHHMMSS(vs.volumeGoalSec)}` : "--");
+    $set("statStreak", "textContent", `${vs.todayCount} blocks`);
+    $set("statFloor", "textContent", plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--");
+    $set("todayGoal", "textContent", fmtHHMMSS(plan.goal_sec || 0));
+
+    // Update volume progress bar
+    const bar = $("volumeBar");
+    if (bar) bar.style.width = `${Math.min(100, Math.round(vs.progressPct * 100))}%`;
+    $set("volumeText", "textContent",
+      vs.volumeHit
+        ? `Volume goal hit! ${fmtHHMMSS(vs.todayTotalSec)} today`
+        : `${fmtHHMMSS(vs.todayTotalSec)} / ${fmtHHMMSS(vs.volumeGoalSec)} today`
+    );
+  } else {
+    $set("todayCount", "textContent", String(s.count || 0));
+    $set("statStreak", "textContent", streak > 0 ? `${streak} 🔥` : "0");
+    $set("statFloor", "textContent", plan.floor_sec > 0 ? fmtMin(plan.floor_sec) : "--");
+    $set("todayGoal", "textContent", fmtHHMMSS(plan.goal_sec || 0));
+  }
 
   // Context line beneath stats
   const ctx = $("statsContext");
   if (ctx) {
     const parts = [];
 
-    // Weekly floor delta
-    const floorDelta = computeWeeklyFloorDelta();
-    if (floorDelta != null) {
-      if (floorDelta > 0) parts.push(`Floor this week: +${fmtMin(floorDelta)}`);
-      else if (floorDelta < -30) parts.push(`Floor this week: ${fmtMin(floorDelta)}`);
-      else parts.push("Floor: steady");
+    // Volume floor info
+    if (vs?.volumeFloorSec) {
+      parts.push(`Daily floor: ${fmtHHMMSS(vs.volumeFloorSec)}`);
+    }
+
+    // Gap info
+    if (vs?.gapMinutes != null && vs.gapMinutes > 0) {
+      const freshPct = Math.round(vs.gapFatigue * 100);
+      if (freshPct < 100) {
+        parts.push(`Recovery: ${freshPct}%`);
+      } else {
+        parts.push("Fully rested");
+      }
     }
 
     // Momentum indicator
@@ -538,13 +607,7 @@ function syncTodayCard() {
       parts.push(momLabel);
     }
 
-    // Fatigue note
-    if (plan.fatigue_factor && plan.fatigue_factor < 0.95) {
-      parts.push(`Fatigue: ${Math.round(plan.fatigue_factor * 100)}%`);
-    }
-
     if (winRate != null) parts.push(`Win: ${winRate}%`);
-    if (s.total > 0) parts.push(`Total: ${fmtHHMMSS(s.total)}`);
 
     ctx.textContent = parts.join("  ·  ");
   }
@@ -598,6 +661,8 @@ function friendlyBlockType(bt) {
 }
 
 function statusMessage(plan, m, blockCount) {
+  const vs = volState;
+
   // First-run
   if (blockCount === 0) {
     return { text: "Press Focus and concentrate until you can't. The app will learn your rhythm.", tone: "" };
@@ -608,34 +673,31 @@ function statusMessage(plan, m, blockCount) {
     return { text: `Calibrating — ${3 - blockCount} more sessions to establish your baseline.`, tone: "calm" };
   }
 
-  const mode = plan.debug?.mode || plan.phase;
-  const bt = plan.block_type;
+  // Volume-aware messaging
+  if (vs) {
+    if (vs.volumeHit) {
+      return { text: `Daily volume goal reached! ${fmtHHMMSS(vs.todayTotalSec)} today. You can keep going or call it.`, tone: "good" };
+    }
 
-  if (mode === "BOOT") {
-    return { text: "Warming up — complete a few more sessions for the algorithm to dial in.", tone: "calm" };
-  }
+    const remaining = vs.remainingSec;
+    const blocksLeft = plan.goal_sec > 0 ? Math.ceil(remaining / plan.goal_sec) : 0;
 
-  if (plan.phase === "LINEAR") {
-    const bumped = plan.debug?.bumped;
-    if (bumped) {
-      return { text: `Goal raised to ${fmtHHMMSS(plan.goal_sec)}. You've been consistent — keep it up.`, tone: "good" };
+    if (vs.todayCount === 0) {
+      return { text: `Daily goal: ${fmtHHMMSS(vs.volumeGoalSec)}. Start with an easy ${fmtHHMMSS(plan.goal_sec)} block.`, tone: "" };
     }
-    return { text: `Building your baseline. Goal adapts as you improve.`, tone: "calm" };
-  }
 
-  if (plan.phase === "WAVE") {
-    if (plan.debug?.mode === "WAVE_EASY") {
-      return { text: "Recovery block — easy target to stabilize after a tough stretch.", tone: "warn" };
+    if (vs.gapMinutes != null && vs.gapMinutes < 5 && vs.todayCount > 0) {
+      return { text: `Just finished a block. Take your break — you'll be fresher for the next one.`, tone: "calm" };
     }
-    if (bt === "PUSH" || bt === "PUSH_A" || bt === "PUSH_B") {
-      const momLabel = plan.momLevel === "HIGH" ? "You're on fire — " : plan.momLevel === "LOW" ? "Gentle push — " : "";
-      return { text: `${momLabel}Push block — aim for ${fmtHHMMSS(plan.push_target || plan.goal_sec)}. It's okay to fall short.`, tone: "" };
+
+    if (vs.gapFatigue < 0.95 && vs.todayCount > 0) {
+      const pct = Math.round(vs.gapFatigue * 100);
+      return { text: `Recovery at ${pct}%. ${fmtHHMMSS(remaining)} left for today's goal (~${blocksLeft} more block${blocksLeft !== 1 ? "s" : ""}).`, tone: "calm" };
     }
-    // Fatigue note for late-day blocks
-    if (plan.blocks_today >= 3 && plan.fatigue_factor < 0.90) {
-      return { text: `Consolidation — goal adjusted for fatigue (block ${plan.blocks_today + 1} today).`, tone: "calm" };
+
+    if (remaining > 0) {
+      return { text: `${fmtHHMMSS(remaining)} remaining for today. ~${blocksLeft} block${blocksLeft !== 1 ? "s" : ""} to go.`, tone: "" };
     }
-    return { text: "Consolidation — land this and keep your momentum going.", tone: "calm" };
   }
 
   return { text: "Ready when you are.", tone: "calm" };
@@ -1038,16 +1100,24 @@ async function finalizeFocus(stopReason) {
     showWinModal(focusSeconds, goalSec);
   }
 
-  // Check for perfect day (all blocks today hit their goals)
+  // Volume goal celebration
+  if (volState) {
+    const prevTotal = volState.todayTotalSec - focusSeconds;
+    const nowTotal = volState.todayTotalSec;
+    const goal = volState.volumeGoalSec;
+    if (goal > 0 && prevTotal < goal && nowTotal >= goal) {
+      setTimeout(() => setStatus(`🎯 Daily volume goal reached — ${fmtHHMMSS(nowTotal)}! Keep going or take a well-earned rest.`, "good"), 1500);
+      // Turn bar green
+      const bar = $("volumeBar");
+      if (bar) bar.classList.add("hit");
+    }
+  }
+
+  // Daily total milestones
   const todaysBlocks = blocks.filter((b) => {
     const t = Date.parse((b.timestamp || "").replace(" ", "T"));
     return !Number.isNaN(t) && t >= dayStart;
   });
-  if (todaysBlocks.length >= 3 && todaysBlocks.every(b => b.is_win)) {
-    setTimeout(() => setStatus("⭐ Perfect day — every session hit its goal!", "good"), 1500);
-  }
-
-  // Daily total milestones
   const totalFocusToday = todaysBlocks.reduce((s, b) => s + Number(b.focus_seconds || 0), 0);
   const hours = Math.floor(totalFocusToday / 3600);
   if (hours >= 1 && totalFocusToday - focusSeconds < hours * 3600) {

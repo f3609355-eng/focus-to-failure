@@ -83,6 +83,14 @@
       </div>
 
         <div class="header-status" id="statusLabel">Press Focus and concentrate until you can't.</div>
+
+        <!-- Volume progress bar -->
+        <div class="volume-progress" id="volumeProgress">
+          <div class="volume-track">
+            <div class="volume-bar" id="volumeBar"></div>
+          </div>
+          <div class="volume-text" id="volumeText">--</div>
+        </div>
       </header>
 
       <!-- ═══ STATS PANEL ═══ -->
@@ -92,8 +100,8 @@
           <!-- Stats summary row -->
           <div class="stats-grid">
             <div class="stat"><div class="stat-label">Today</div><div class="stat-value" id="todayCount">--</div></div>
-            <div class="stat"><div class="stat-label">Streak</div><div class="stat-value" id="statStreak">--</div></div>
-            <div class="stat"><div class="stat-label">Floor</div><div class="stat-value" id="statFloor">--</div></div>
+            <div class="stat"><div class="stat-label">Sessions</div><div class="stat-value" id="statStreak">--</div></div>
+            <div class="stat"><div class="stat-label">Session Floor</div><div class="stat-value" id="statFloor">--</div></div>
             <div class="stat"><div class="stat-label">Next Goal</div><div class="stat-value" id="todayGoal">--</div></div>
           </div>
           <div class="stats-context" id="statsContext"></div>
@@ -292,7 +300,7 @@
 
       <div class="about-hero">
         <div class="about-hero-icon">🎯</div>
-        <p class="about-hero-text">Focus until you can't. The app learns your rhythm and grows with you.</p>
+        <p class="about-hero-text">Build your daily focus capacity. The app sets easy session goals so you do more blocks — growing your total volume over time.</p>
       </div>
 
       <div class="about-section">
@@ -301,77 +309,77 @@
           <div class="about-step">
             <span class="about-step-num">1</span>
             <div>
-              <strong>Press Focus</strong> and do your work. Don't watch the timer — use zen mode (the eye icon) to hide it. Just work until your concentration breaks naturally.
+              <strong>Press Focus</strong> and do your work. Session goals are set below your floor — they should feel achievable. Use zen mode (the eye icon) to hide the timer.
             </div>
           </div>
           <div class="about-step">
             <span class="about-step-num">2</span>
             <div>
-              <strong>Press Done</strong> when you feel your focus slipping but you're choosing to stop. Press <strong>Distracted</strong> if you realize you've already lost focus. Be honest — the distinction helps the algorithm understand your patterns.
+              <strong>Press Done</strong> when you feel your focus slipping but you're choosing to stop. Press <strong>Distracted</strong> if you realize you've already lost focus. Be honest — it helps the algorithm.
             </div>
           </div>
           <div class="about-step">
             <span class="about-step-num">3</span>
             <div>
-              <strong>Take your break.</strong> The app calculates break length based on how long you focused. Step away from the screen. Move. Look at something far away. Then come back for the next block.
+              <strong>Take your break, then come back.</strong> The real goal is your <strong>daily volume</strong> — the progress bar shows how much total focus you've done today vs your target. More blocks = more volume.
             </div>
           </div>
         </div>
       </div>
 
       <div class="about-section">
-        <div class="about-heading">How the Algorithm Works</div>
-        <p>The app tracks your <strong>floor</strong> — the 35th percentile of your recent sessions. This is what you can reliably do on an average day. Everything is built around raising this number over time.</p>
+        <div class="about-heading">How the Volume System Works</div>
+        <p>The app tracks your <strong>daily volume floor</strong> — the total focus minutes you reliably put in on a typical day. Everything is built around growing this number.</p>
 
         <div class="about-concept">
-          <span class="about-concept-label">📈 Linear Phase</span>
-          Your first sessions. The app is learning your baseline. Goals increase as you prove consistency. Once you plateau, you transition to Wave mode.
+          <span class="about-concept-label">📊 Daily Volume Goal</span>
+          Your target total focus for today. Set slightly above your volume floor. Hit it by doing multiple easy sessions spread across the day.
         </div>
 
         <div class="about-concept">
-          <span class="about-concept-label">🌊 Wave Phase</span>
-          Alternating cycles of <strong>Push</strong> blocks (stretch goals above your floor) and <strong>Consolidation</strong> blocks (comfortable goals at your floor). The mix adapts to your momentum — when you're hitting goals consistently, you get more pushes. When you're struggling, more consolidation.
+          <span class="about-concept-label">🎯 Session Goals</span>
+          Set at about 90% of your session floor — deliberately easy. The point is to make each block feel achievable so you come back for more, not to grind one long session.
         </div>
 
         <div class="about-concept">
-          <span class="about-concept-label">⚡ Momentum</span>
-          Your rolling win rate over the last 5 blocks. <strong>Hot</strong> (80%+) means aggressive cycles. <strong>Steady</strong> (40-80%) means balanced. <strong>Recovery</strong> (below 40%) means easy cycles with gentle pushes. You'll see your momentum in the stats bar.
+          <span class="about-concept-label">⏱️ Gap-Based Recovery</span>
+          Back-to-back sessions get a small fatigue penalty. But wait 2 hours and you're fully fresh. Spreading sessions across the day (morning, afternoon, evening) means easier goals and more volume.
         </div>
 
         <div class="about-concept">
-          <span class="about-concept-label">😴 Fatigue Curve</span>
-          Your 4th block of the day is harder than your 1st. The app knows this. Goals automatically decrease for later blocks (6% per block by default, adjustable in settings). A 22-minute block 4 after three 30-minute blocks is a great session — the algorithm treats it that way.
+          <span class="about-concept-label">☕ Generous Breaks</span>
+          Early in the day, breaks are longer to preserve your energy. As you approach your daily goal, breaks normalize. This helps you sustain more sessions without burning out.
         </div>
       </div>
 
       <div class="about-section">
         <div class="about-heading">What the Stats Mean</div>
         <div class="about-concept">
-          <span class="about-concept-label">🏠 Floor</span>
-          Your reliable baseline — what you can do on an okay day. This is the number you're trying to raise. When it goes up, you've genuinely improved.
+          <span class="about-concept-label">📊 Daily Volume</span>
+          The progress bar at the bottom of the header. Shows total focus today vs your daily goal. This is the main number you're trying to grow.
         </div>
         <div class="about-concept">
-          <span class="about-concept-label">🔥 Streak</span>
-          Consecutive sessions where you hit your goal. Long streaks mean the algorithm has dialed in your level. Broken streaks are fine — they're information, not failure.
+          <span class="about-concept-label">🏠 Session Floor</span>
+          Your reliable per-session baseline — what you can do in a single sitting on an okay day. Session goals are set below this to keep blocks easy.
+        </div>
+        <div class="about-concept">
+          <span class="about-concept-label">⏱️ Recovery</span>
+          Shows how fresh you are based on time since your last block. 100% = fully rested. Below 95% = you might want to wait a bit longer.
         </div>
         <div class="about-concept">
           <span class="about-concept-label">🏆 Milestones</span>
-          Earned when your floor crosses key thresholds (15m, 20m, 25m, 30m, etc). These are permanent. They represent real, sustained growth — not a single good session.
-        </div>
-        <div class="about-concept">
-          <span class="about-concept-label">📊 Weekly Floor Delta</span>
-          Shown in the stats bar. Tells you whether your floor moved up, down, or held steady compared to last week. The most important feedback signal in the app.
+          Earned when your session floor crosses key thresholds. These are permanent — they represent real, sustained growth.
         </div>
       </div>
 
       <div class="about-section">
         <div class="about-heading">Tips for Getting the Most Out of It</div>
-        <div class="about-tip"><strong>Be consistent, not heroic.</strong> Three 25-minute blocks every day beats one 90-minute block once a week. The algorithm rewards consistency.</div>
-        <div class="about-tip"><strong>Use zen mode.</strong> Watching the timer is counterproductive. Hide it and let the app do the tracking. You'll get a subtle indicator when you hit your goal.</div>
-        <div class="about-tip"><strong>Don't chase overshoots.</strong> Going way past your goal feels great but it inflates your stats and can make tomorrow's goals too hard. When you hit your goal, finishing soon after is ideal.</div>
-        <div class="about-tip"><strong>Distracted ≠ failure.</strong> Pressing "Distracted" gives the algorithm honest data. A short distracted block followed by a strong recovery block is better than a long block where you were half-checked-out.</div>
-        <div class="about-tip"><strong>Trust the fatigue curve.</strong> If your 4th block feels easy despite the lower goal, that's the system working. You're building endurance without burnout.</div>
-        <div class="about-tip"><strong>The floor is everything.</strong> Ignore individual sessions. The floor is the signal. If it's trending up week over week, you're improving. Everything else is noise.</div>
+        <div class="about-tip"><strong>Spread sessions across the day.</strong> Morning, afternoon, evening — each slot starts nearly fresh. Three 25-minute sessions across the day beats two 40-minute sessions back-to-back.</div>
+        <div class="about-tip"><strong>Session goals should feel easy.</strong> That's by design. Easy sessions mean you'll actually do another one. Volume compounds.</div>
+        <div class="about-tip"><strong>Use zen mode.</strong> Watching the timer is counterproductive. Hide it and let the app track for you.</div>
+        <div class="about-tip"><strong>Distracted ≠ failure.</strong> Pressing "Distracted" gives the algorithm honest data. A short distracted block followed by coming back later is better than forcing through when you're not focused.</div>
+        <div class="about-tip"><strong>The daily volume bar is everything.</strong> Ignore individual sessions. If you're hitting your daily volume consistently, you're building endurance. The rest is noise.</div>
+        <div class="about-tip"><strong>Take real breaks.</strong> The app gives generous breaks early in the day on purpose. Step away from the screen. Move. Come back fresh.</div>
       </div>
 
       <div class="about-section about-section-last">
