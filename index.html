@@ -129,6 +129,25 @@
           </div>
 
           <!-- History table (shown only on history tab) -->
+          <div class="history-toolbar hidden" id="historyToolbar">
+            <div class="history-toolbar-row">
+              <input class="history-search" id="historySearch" type="search" placeholder="Search history…" aria-label="Search history" />
+              <select id="historyPhaseFilter" aria-label="Filter history by phase">
+                <option value="ALL">All phases</option>
+              </select>
+              <select id="historyTypeFilter" aria-label="Filter history by block type">
+                <option value="ALL">All types</option>
+              </select>
+              <select id="historyStopFilter" aria-label="Filter history by stop reason">
+                <option value="ALL">All outcomes</option>
+              </select>
+              <label class="history-check">
+                <input type="checkbox" id="historyReverseToggle" checked />
+                <span>Newest first</span>
+              </label>
+            </div>
+            <div class="history-summary" id="historySummary">--</div>
+          </div>
           <div class="table-wrap hidden" id="historyWrap">
             <table id="historyTable">
               <thead>
@@ -293,99 +312,129 @@
   <!-- ═══ ABOUT MODAL ═══ -->
   <div class="modal hidden" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="modal-header">
-      <div class="modal-title" id="aboutTitle">How to Use fooocus</div>
+      <div class="modal-title" id="aboutTitle">How fooocus works</div>
       <button class="btn btn-pill btn-sm" id="closeAboutBtn">Close</button>
     </div>
     <div class="modal-body about-body">
 
+      <!-- Hero -->
       <div class="about-hero">
-        <div class="about-hero-icon">🎯</div>
-        <p class="about-hero-text">Build your daily focus capacity. The app sets easy session goals so you do more blocks — growing your total volume over time.</p>
+        <p class="about-tagline">The goal isn't longer sessions.<br>It's <em>more total focus</em> in your day.</p>
+        <p class="about-sub">Easy blocks. Generous breaks. Come back often. Volume compounds.</p>
       </div>
 
+      <!-- Core Loop -->
       <div class="about-section">
-        <div class="about-heading">The Core Loop</div>
-        <div class="about-steps">
-          <div class="about-step">
-            <span class="about-step-num">1</span>
-            <div>
-              <strong>Press Focus</strong> and do your work. Session goals are set below your floor — they should feel achievable. Use zen mode (the eye icon) to hide the timer.
+        <div class="about-heading">The loop</div>
+        <div class="about-flow">
+          <div class="about-flow-step">
+            <div class="about-flow-icon">▶</div>
+            <div class="about-flow-body">
+              <strong>Focus</strong>
+              <span>Start a block. Goals are set below your floor — they should feel easy. Hide the timer with zen mode.</span>
             </div>
           </div>
-          <div class="about-step">
-            <span class="about-step-num">2</span>
-            <div>
-              <strong>Press Done</strong> when you feel your focus slipping but you're choosing to stop. Press <strong>Distracted</strong> if you realize you've already lost focus. Be honest — it helps the algorithm.
+          <div class="about-flow-arrow">↓</div>
+          <div class="about-flow-step">
+            <div class="about-flow-icon">✓</div>
+            <div class="about-flow-body">
+              <strong>Stop honestly</strong>
+              <span><em>Done</em> = you chose to stop. <em>Distracted</em> = you'd already lost focus. The algorithm learns from the difference.</span>
             </div>
           </div>
-          <div class="about-step">
-            <span class="about-step-num">3</span>
-            <div>
-              <strong>Take your break, then come back.</strong> The real goal is your <strong>daily volume</strong> — the progress bar shows how much total focus you've done today vs your target. More blocks = more volume.
+          <div class="about-flow-arrow">↓</div>
+          <div class="about-flow-step">
+            <div class="about-flow-icon">☕</div>
+            <div class="about-flow-body">
+              <strong>Break, then come back</strong>
+              <span>Step away. The progress bar tracks your daily total. Each new block adds to it.</span>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- How it works -->
       <div class="about-section">
-        <div class="about-heading">How the Volume System Works</div>
-        <p>The app tracks your <strong>daily volume floor</strong> — the total focus minutes you reliably put in on a typical day. Everything is built around growing this number.</p>
-
-        <div class="about-concept">
-          <span class="about-concept-label">📊 Daily Volume Goal</span>
-          Your target total focus for today. Set slightly above your volume floor. Hit it by doing multiple easy sessions spread across the day.
-        </div>
-
-        <div class="about-concept">
-          <span class="about-concept-label">🎯 Session Goals</span>
-          Set at about 90% of your session floor — deliberately easy. The point is to make each block feel achievable so you come back for more, not to grind one long session.
-        </div>
-
-        <div class="about-concept">
-          <span class="about-concept-label">⏱️ Gap-Based Recovery</span>
-          Back-to-back sessions get a small fatigue penalty. But wait 2 hours and you're fully fresh. Spreading sessions across the day (morning, afternoon, evening) means easier goals and more volume.
-        </div>
-
-        <div class="about-concept">
-          <span class="about-concept-label">☕ Generous Breaks</span>
-          Early in the day, breaks are longer to preserve your energy. As you approach your daily goal, breaks normalize. This helps you sustain more sessions without burning out.
+        <div class="about-heading">How the system adapts</div>
+        <div class="about-grid">
+          <div class="about-card">
+            <div class="about-card-head">📊 Daily volume goal</div>
+            <div class="about-card-body">Your target total for the day — set just above what you reliably do (your volume floor). Hit it across as many sessions as you like.</div>
+          </div>
+          <div class="about-card">
+            <div class="about-card-head">🎯 Easy session goals</div>
+            <div class="about-card-body">Each block targets ~90% of your session floor. Deliberately comfortable. You'll finish most of them — and start another.</div>
+          </div>
+          <div class="about-card">
+            <div class="about-card-head">⏱ Gap-based recovery</div>
+            <div class="about-card-body">Back-to-back blocks get a small penalty. Wait 2 hours and you're fully fresh. Spreading sessions across morning, afternoon, and evening works best.</div>
+          </div>
+          <div class="about-card">
+            <div class="about-card-head">☕ Generous breaks</div>
+            <div class="about-card-body">Breaks are longer early in the day to save your energy for later sessions. As you near your daily goal, they normalize.</div>
+          </div>
         </div>
       </div>
 
+      <!-- Stats -->
       <div class="about-section">
-        <div class="about-heading">What the Stats Mean</div>
-        <div class="about-concept">
-          <span class="about-concept-label">📊 Daily Volume</span>
-          The progress bar at the bottom of the header. Shows total focus today vs your daily goal. This is the main number you're trying to grow.
-        </div>
-        <div class="about-concept">
-          <span class="about-concept-label">🏠 Session Floor</span>
-          Your reliable per-session baseline — what you can do in a single sitting on an okay day. Session goals are set below this to keep blocks easy.
-        </div>
-        <div class="about-concept">
-          <span class="about-concept-label">⏱️ Recovery</span>
-          Shows how fresh you are based on time since your last block. 100% = fully rested. Below 95% = you might want to wait a bit longer.
-        </div>
-        <div class="about-concept">
-          <span class="about-concept-label">🏆 Milestones</span>
-          Earned when your session floor crosses key thresholds. These are permanent — they represent real, sustained growth.
+        <div class="about-heading">Reading the numbers</div>
+        <dl class="about-defs">
+          <div class="about-def">
+            <dt>Volume bar</dt>
+            <dd>Total focus today vs your daily goal. The main number. Fill it up.</dd>
+          </div>
+          <div class="about-def">
+            <dt>Session floor</dt>
+            <dd>What you can reliably do in one sitting. Session goals are set below this.</dd>
+          </div>
+          <div class="about-def">
+            <dt>Recovery %</dt>
+            <dd>How fresh you are since your last block. 100% = fully rested.</dd>
+          </div>
+          <div class="about-def">
+            <dt>Milestones</dt>
+            <dd>Permanent trophies earned when your session floor crosses thresholds like 15m, 25m, 30m.</dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Tips -->
+      <div class="about-section">
+        <div class="about-heading">Tips</div>
+        <div class="about-tips-grid">
+          <div class="about-tip-card">
+            <strong>Spread sessions out</strong>
+            Morning + afternoon + evening beats three blocks in a row.
+          </div>
+          <div class="about-tip-card">
+            <strong>Easy is the point</strong>
+            Finishing a short block and starting another beats grinding one long one.
+          </div>
+          <div class="about-tip-card">
+            <strong>Use zen mode</strong>
+            The eye icon hides the timer. You'll focus better without watching it.
+          </div>
+          <div class="about-tip-card">
+            <strong>Be honest</strong>
+            Pressing Distracted isn't failure — it's data the algorithm needs.
+          </div>
+          <div class="about-tip-card">
+            <strong>Take real breaks</strong>
+            The generous early-day breaks are deliberate. Step away. Move. Come back.
+          </div>
+          <div class="about-tip-card">
+            <strong>Watch the bar, not the clock</strong>
+            Daily volume is the signal. Individual sessions are noise.
+          </div>
         </div>
       </div>
 
-      <div class="about-section">
-        <div class="about-heading">Tips for Getting the Most Out of It</div>
-        <div class="about-tip"><strong>Spread sessions across the day.</strong> Morning, afternoon, evening — each slot starts nearly fresh. Three 25-minute sessions across the day beats two 40-minute sessions back-to-back.</div>
-        <div class="about-tip"><strong>Session goals should feel easy.</strong> That's by design. Easy sessions mean you'll actually do another one. Volume compounds.</div>
-        <div class="about-tip"><strong>Use zen mode.</strong> Watching the timer is counterproductive. Hide it and let the app track for you.</div>
-        <div class="about-tip"><strong>Distracted ≠ failure.</strong> Pressing "Distracted" gives the algorithm honest data. A short distracted block followed by coming back later is better than forcing through when you're not focused.</div>
-        <div class="about-tip"><strong>The daily volume bar is everything.</strong> Ignore individual sessions. If you're hitting your daily volume consistently, you're building endurance. The rest is noise.</div>
-        <div class="about-tip"><strong>Take real breaks.</strong> The app gives generous breaks early in the day on purpose. Step away from the screen. Move. Come back fresh.</div>
-      </div>
-
+      <!-- Shortcuts -->
       <div class="about-section about-section-last">
-        <div class="about-heading">Keyboard Shortcuts</div>
+        <div class="about-heading">Shortcuts</div>
         <div class="about-keys">
-          <span class="about-key"><kbd>Space</kbd> Start focus / Pause / Resume</span>
+          <span class="about-key"><kbd>Space</kbd> Focus / Pause / Resume</span>
           <span class="about-key"><kbd>Esc</kbd> Close modals</span>
         </div>
       </div>

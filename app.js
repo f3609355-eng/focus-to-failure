@@ -6,8 +6,12 @@ import { blendMetrics } from "./engine/blendEngine.js";
 import { WavePlanner, Phase, BlockType } from "./planner.js";
 import { computeVolumeState, computeSessionTarget, hourToWindowKey } from "./engine/volumeEngine.js";
 
-const VERSION = "5.0.0";
+const VERSION = "5.0.1";
 import { drawProgress, drawToday, drawWeekly, drawConsistency, drawDistribution, destroyChart } from "./charts.js";
+import { createHistoryUI } from "./ui/history.js";
+import { createRecoveryController } from "./session/recovery.js";
+import { prettyPhase, friendlyBlockType } from "./ui/header.js";
+import { computeUiState } from "./session/timer.js";
 
 // ════════════════════════════════════════════════
 // DOM Helpers
@@ -87,12 +91,20 @@ let activeTab = "progress";
 let settingsWired = false;
 let zenMode = localStorage.getItem("ftf_zen") === "1";
 let lastAutoSave = 0;
+let historyFilters = {
+  query: "",
+  phase: "ALL",
+  blockType: "ALL",
+  stopReason: "ALL",
+  newestFirst: true,
+};
 
 // Volume system state (computed fresh each render)
 let volState = null;
 
 const SESSION_KEY = "ftf_inflight_session";
 const AUTOSAVE_INTERVAL_MS = 15_000; // save every 15s during focus
+const recovery = createRecoveryController({ localStorage, sessionKey: SESSION_KEY, nowTimestamp, bucketForDate, fmtHHMMSS });
 
 // ════════════════════════════════════════════════
 // Config Persistence
@@ -120,127 +132,30 @@ function setStatus(text, tone = "calm") {
 // ════════════════════════════════════════════════
 
 function saveInflightSession() {
-  if (mode !== "FOCUS" || startTS == null) return;
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
-      elapsed,
-      goalSec: focusStartSnapshot.goalSec || 0,
-      planSnapshot: focusStartSnapshot.plan ? {
-        phase: focusStartSnapshot.plan.phase,
-        block_type: focusStartSnapshot.plan.block_type,
-        goal_sec: focusStartSnapshot.plan.goal_sec,
-        floor_sec: focusStartSnapshot.plan.floor_sec,
-        min_goal_sec: focusStartSnapshot.plan.min_goal_sec,
-        push_target: focusStartSnapshot.plan.push_target,
-        target_low: focusStartSnapshot.plan.target_low,
-        target_high: focusStartSnapshot.plan.target_high,
-        wave_cycle_id: focusStartSnapshot.plan.wave_cycle_id,
-        wave_cycle_pos: focusStartSnapshot.plan.wave_cycle_pos,
-      } : null,
-      metricsSnapshot: focusStartSnapshot.m ? {
-        floor: focusStartSnapshot.m.floor,
-        median: focusStartSnapshot.m.median,
-        ceiling: focusStartSnapshot.m.ceiling,
-        crash_threshold: focusStartSnapshot.m.crash_threshold,
-        overshoot_threshold: focusStartSnapshot.m.overshoot_threshold,
-        floor_global: focusStartSnapshot.m.floor_global,
-        floor_bucket: focusStartSnapshot.m.floor_bucket,
-        median_global: focusStartSnapshot.m.median_global,
-        median_bucket: focusStartSnapshot.m.median_bucket,
-        bucket_weight: focusStartSnapshot.m.bucket_weight,
-        bucket_n: focusStartSnapshot.m.bucket_n,
-      } : null,
-      savedAt: Date.now(),
-      timestamp: nowTimestamp(),
-      bucket: bucketForDate(new Date()),
-    }));
-  } catch (e) { /* ignore */ }
+  recovery.save({ mode, startTS, elapsed, focusStartSnapshot });
 }
 
 function clearInflightSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+  recovery.clear();
 }
 
 function getInflightSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    // Discard if older than 12 hours (stale crash)
-    if (Date.now() - (s.savedAt || 0) > 12 * 3600 * 1000) {
-      clearInflightSession();
-      return null;
-    }
-    if (!s.elapsed || s.elapsed < 10) {
-      clearInflightSession();
-      return null;
-    }
-    return s;
-  } catch (e) {
-    return null;
-  }
+  return recovery.get();
 }
 
 async function recoverSession(session) {
-  const focusSeconds = Math.floor(session.elapsed);
-  const plan = session.planSnapshot || {};
-  const m = session.metricsSnapshot || {};
-  const goalSec = Number(plan.goal_sec || session.goalSec || 0);
-
-  const crash = m.crash_threshold != null && focusSeconds < m.crash_threshold;
-  const overshoot = m.overshoot_threshold != null && focusSeconds > m.overshoot_threshold;
-  const isPush = plan.block_type === "PUSH" || plan.block_type === "PUSH_A" || plan.block_type === "PUSH_B";
-  const pushTarget = isPush ? (plan.push_target || 0) : 0;
-  const pushHit = isPush ? focusSeconds >= pushTarget : false;
-  const breakSeconds = computeBreakSeconds(focusSeconds, crash, overshoot, isPush);
-  const isWin = goalSec > 0 && focusSeconds >= goalSec;
-
-  const idx = blocks.length ? Math.max(...blocks.map(b => b.idx)) + 1 : 1;
-  const block = {
-    idx,
-    goal_seconds: goalSec,
-    min_goal_seconds: plan.min_goal_sec || 0,
-    floor_seconds: plan.floor_sec || 0,
-    floor_global_seconds: m.floor_global || null,
-    floor_bucket_seconds: m.floor_bucket || null,
-    floor_effective_seconds: m.floor || null,
-    bucket_weight: m.bucket_weight || 0,
-    bucket_n: m.bucket_n || 0,
-    median_global_seconds: m.median_global || null,
-    median_bucket_seconds: m.median_bucket || null,
-    median_effective_seconds: m.median || null,
-    ceiling_global_seconds: null,
-    ceiling_bucket_seconds: null,
-    ceiling_effective_seconds: m.ceiling || null,
-    validity: "recovered",
-    focus_seconds: focusSeconds,
-    is_win: isWin,
-    break_seconds: breakSeconds,
-    timestamp: session.timestamp || nowTimestamp(),
-    bucket: session.bucket || bucketForDate(new Date()),
-    phase: plan.phase || "LINEAR",
-    block_type: plan.block_type || "CONSOLIDATE",
-    target_low_seconds: plan.target_low || 0,
-    target_high_seconds: plan.target_high || 0,
-    push_target_seconds: pushTarget,
-    push_hit: pushHit,
-    crash,
-    overshoot,
-    stop_reason: "RECOVERED",
-    wave_cycle_id: plan.wave_cycle_id || 0,
-    wave_cycle_pos: plan.wave_cycle_pos || 0,
-  };
-
-  blocks.push(block);
-  await putBlock(block);
-  planner.updateAfterBlock(block);
-  invalidateCache();
-  clearInflightSession();
-
-  renderTable();
-  redrawCharts();
-  syncHeader();
-  setStatus(`Recovered ${fmtHHMMSS(focusSeconds)} focus block from interrupted session.`, "good");
+  return recovery.recover({
+    session,
+    blocks,
+    putBlock,
+    planner,
+    invalidateCache,
+    renderTable,
+    redrawCharts,
+    syncHeader,
+    setStatus,
+    computeBreakSeconds,
+  });
 }
 
 // ════════════════════════════════════════════════
@@ -644,22 +559,6 @@ function computeWeeklyFloorDelta() {
   return Math.round(currentFloor - oldFloor);
 }
 
-function prettyPhase(p) {
-  const s = String(p || "").toUpperCase();
-  if (!s) return "--";
-  if (s === "LINEAR") return "Building";
-  if (s.startsWith("WAVE")) return "Wave";
-  return s.charAt(0) + s.slice(1).toLowerCase();
-}
-
-function friendlyBlockType(bt) {
-  if (!bt) return "";
-  if (bt === "CONSOLIDATE") return "Consolidation";
-  if (bt === "PUSH" || bt === "PUSH_A" || bt === "PUSH_B") return "Push";
-  if (bt === "RAISE_FLOOR") return "Floor raise";
-  return bt;
-}
-
 function statusMessage(plan, m, blockCount) {
   const vs = volState;
 
@@ -747,10 +646,7 @@ function computeHeaderState() {
   debugLines.push(`phase: ${plan.phase}`, `block_type: ${plan.block_type}`, `push_target: ${plan.push_target}`);
 
   // UI state for button groups
-  let uiState = "idle";
-  if (mode === "BREAK" && timerActive) uiState = "break";
-  else if (mode === "FOCUS" && timerActive && running) uiState = "focusing";
-  else if (mode === "FOCUS" && timerActive && !running) uiState = "paused";
+  const uiState = computeUiState({ mode, timerActive, running });
 
   return {
     mode, elapsed, goalHit, timerActive, focusStarted, uiState,
@@ -895,33 +791,22 @@ function redrawCharts() {
 // History Table
 // ════════════════════════════════════════════════
 
-function yesNo(v) { return v ? "Yes" : "No"; }
-
-function rowHTML(b) {
-  const focus = fmtHHMMSS(Number(b.focus_seconds || 0));
-  const goal  = fmtHHMMSS(Number(b.goal_seconds || 0));
-  const brk   = fmtHHMMSS(Number(b.break_seconds || 0));
-  const tl    = fmtHHMMSS(Number(b.target_low_seconds || 0));
-  const th    = fmtHHMMSS(Number(b.target_high_seconds || 0));
-  const push  = b.push_target_seconds ? fmtHHMMSS(Number(b.push_target_seconds)) : "--";
-  const pauses = b.pause_count > 0 ? `${b.pause_count}` : "--";
-  return `<tr>
-    <td>${escHTML(b.idx)}</td>
-    <td>${escHTML(b.phase || "--")}</td>
-    <td>${escHTML(b.block_type || "--")}</td>
-    <td>${focus}</td><td>${goal}</td><td>${brk}</td>
-    <td>${tl}</td><td>${th}</td><td>${push}</td>
-    <td>${yesNo(b.crash)}</td>
-    <td>${b.overshoot ? fmtHHMMSS(Number(b.overshoot)) : "--"}</td>
-    <td>${escHTML(b.stop_reason || "--")}</td>
-    <td>${pauses}</td>
-    <td>${escHTML(b.bucket || "--")}</td>
-    <td>${escHTML(b.timestamp || "--")}</td>
-  </tr>`;
-}
+const historyUI = createHistoryUI({
+  $,
+  $set,
+  getBlocks: () => blocks,
+  getFilters: () => historyFilters,
+  setFilters: (next) => { historyFilters = next; },
+  fmtHHMMSS,
+  escHTML,
+});
 
 function renderTable() {
-  $set("historyBody", "innerHTML", blocks.map(rowHTML).join(""));
+  historyUI.render();
+}
+
+function wireHistoryControls() {
+  historyUI.wire();
 }
 
 // ════════════════════════════════════════════════
@@ -1767,6 +1652,7 @@ async function init() {
 
   wireMainButtons();
   wireSettings();
+  wireHistoryControls();
 
   setSettingsControlsFromCfg();
   renderTable();

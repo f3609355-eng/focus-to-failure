@@ -586,106 +586,175 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
    ABOUT PAGE
    ════════════════════════════════════ */
 .about-body {
-  padding: 16px 20px !important;
+  padding: 20px 22px !important;
   gap: 0 !important;
 }
 
+/* Hero */
 .about-hero {
   text-align: center;
-  padding: 18px 12px 22px;
+  padding: 20px 8px 24px;
 }
-.about-hero-icon {
-  font-size: 2.4rem;
-  margin-bottom: 8px;
-}
-.about-hero-text {
-  font-size: 1.05rem;
-  font-weight: 600;
+.about-tagline {
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+.about-tagline em {
+  font-style: normal;
+  color: var(--accent);
+}
+.about-sub {
+  font-size: 0.82rem;
+  color: var(--muted);
   margin: 0;
+  line-height: 1.5;
 }
 
+/* Sections */
 .about-section {
-  padding: 16px 0;
+  padding: 18px 0 14px;
   border-top: 1px solid var(--border-light);
 }
 .about-section-last {
   padding-bottom: 8px;
 }
-
 .about-heading {
-  font-weight: 800;
-  font-size: 0.88rem;
+  font-weight: 700;
+  font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text);
-  margin-bottom: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 12px;
 }
 
-.about-section > p {
-  font-size: 0.85rem;
-  line-height: 1.6;
-  color: var(--text);
-  margin: 0 0 12px;
-}
-
-/* Numbered steps */
-.about-steps {
+/* Flow steps (vertical) */
+.about-flow {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
-.about-step {
+.about-flow-step {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  font-size: 0.84rem;
-  line-height: 1.55;
-  color: var(--text);
+  padding: 8px 0;
 }
-.about-step-num {
+.about-flow-icon {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 800;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 0.78rem;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-top: 1px;
 }
+.about-flow-body {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.about-flow-body strong {
+  display: block;
+  font-size: 0.84rem;
+  margin-bottom: 1px;
+}
+.about-flow-body span {
+  color: var(--muted);
+}
+.about-flow-arrow {
+  padding-left: 9px;
+  color: var(--border);
+  font-size: 0.7rem;
+  line-height: 1;
+  user-select: none;
+}
 
-/* Concept blocks */
-.about-concept {
-  background: var(--surface);
+/* Card grid (2-col) */
+.about-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .about-grid { grid-template-columns: 1fr; }
+}
+.about-card {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  margin-bottom: 8px;
-  font-size: 0.82rem;
-  line-height: 1.55;
+}
+.about-card-head {
+  font-weight: 700;
+  font-size: 0.80rem;
+  margin-bottom: 4px;
   color: var(--text);
 }
-.about-concept-label {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 3px;
-  font-size: 0.83rem;
+.about-card-body {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
-/* Tips */
-.about-tip {
-  font-size: 0.82rem;
-  line-height: 1.55;
-  color: var(--text);
-  padding: 6px 0;
+/* Definition list for stats */
+.about-defs {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
-.about-tip + .about-tip {
+.about-def {
+  display: flex;
+  gap: 12px;
+  padding: 7px 0;
+  align-items: baseline;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.about-def + .about-def {
   border-top: 1px solid var(--border-light);
+}
+.about-def dt {
+  flex-shrink: 0;
+  width: 100px;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.80rem;
+}
+.about-def dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Tips grid (2-col) */
+.about-tips-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .about-tips-grid { grid-template-columns: 1fr; }
+}
+.about-tip-card {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.about-tip-card strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.80rem;
+  margin-bottom: 2px;
 }
 
 /* Keyboard shortcuts */
@@ -695,8 +764,8 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   gap: 6px;
 }
 .about-key {
-  font-size: 0.82rem;
-  color: var(--text);
+  font-size: 0.80rem;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -705,7 +774,7 @@ body[data-mode="FOCUS"].goal-hit .timer { color: var(--success); }
   display: inline-block;
   padding: 2px 8px;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -967,6 +1036,52 @@ body.modal-open { overflow: hidden; }
 /* ════════════════════════════════════
    HISTORY TABLE
    ════════════════════════════════════ */
+.history-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.history-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.history-search,
+.history-toolbar select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 12px;
+  font: inherit;
+}
+.history-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.history-toolbar select {
+  flex: 0 1 170px;
+}
+.history-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 38px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: #fafaf8;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.history-summary {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .table-wrap {
   overflow: auto;
   max-height: 38vh;
@@ -997,6 +1112,19 @@ thead th {
   font-size: 0.68rem;
   letter-spacing: 0.06em;
   color: var(--muted);
+}
+
+
+@media (max-width: 620px) {
+  .history-toolbar-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .history-toolbar select,
+  .history-search,
+  .history-check {
+    width: 100%;
+  }
 }
 
 /* ════════════════════════════════════

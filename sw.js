@@ -1,4 +1,4 @@
-const CACHE_NAME = "ftf-v5.0.0";
+const CACHE_NAME = "ftf-v5.0.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,6 +16,11 @@ const ASSETS = [
   "./engine/goalEngine.js",
   "./engine/waveEngine.js",
   "./engine/volumeEngine.js",
+  "./ui/header.js",
+  "./ui/history.js",
+  "./ui/settings.js",
+  "./session/recovery.js",
+  "./session/timer.js",
 ];
 
 self.addEventListener("install", (e) => {
